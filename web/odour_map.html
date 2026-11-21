@@ -1,0 +1,1467 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Kathmandu river odour exposure</title>
+<script>
+/* set theme before first paint (no flash) */
+(function () {
+  var pref = 'system';
+  try { pref = localStorage.getItem('ktm-theme') || 'system'; } catch (e) {}
+  var dark = pref === 'dark' || (pref === 'system' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
+  document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+  document.documentElement.setAttribute('data-pref', pref);
+})();
+</script>
+<link rel="stylesheet" href="vendor/leaflet.css">
+<style>
+:root{
+  --bg:#f3f1ec; --surface:rgba(255,255,255,.84); --surface-solid:#fff; --surface-2:#eef0f3;
+  --border:rgba(15,23,42,.10); --text:#0f172a; --text-2:#475569; --text-3:#7a8699;
+  --accent:#d9480f; --accent-soft:rgba(217,72,15,.12); --accent-contrast:#fff;
+  --success:#16a34a; --warn:#b45309; --danger:#dc2626;
+  --radius:14px; --radius-sm:8px;
+  --shadow-1:0 1px 2px rgba(15,23,42,.06);
+  --shadow-2:0 4px 16px rgba(15,23,42,.10);
+  --shadow-3:0 12px 40px rgba(15,23,42,.16);
+  --blur:blur(16px) saturate(1.4);
+  --ease:cubic-bezier(.2,.8,.2,1);
+  /* data tokens: nearest river -> edge of the chosen distance */
+  --e1:#b3001b; --e2:#e8381f; --e3:#fb8c2a; --e4:#f6c340;
+  --bld-dim:rgba(60,70,90,.30); --road-dim:rgba(60,70,90,.38);
+  --zone:#e8590c; --river:#0369a1; --halo:rgba(255,255,255,.85);
+  --do1:#6d28d9; --do2:#2563eb; --do3:#0f766e;
+  --map-bg:#f3f1ec;
+  --mr-casing:rgba(255,255,255,.92); --mr-1:#475569; --mr-2:#7c8aa0;
+  --contour:rgba(70,60,40,.30); --contour-i:rgba(70,60,40,.65); --outline:#0f766e; --hot:#7c3aed;
+  --rail-w:52px; --panel-w:340px; --dock-h:188px; --left:72px;
+}
+:root[data-theme="dark"]{
+  --bg:#0a0c11; --surface:rgba(22,26,35,.82); --surface-solid:#161a23; --surface-2:#1e2430;
+  --border:rgba(255,255,255,.09); --text:#e8ecf3; --text-2:#a3adbf; --text-3:#6f7a8f;
+  --accent:#ff8a4c; --accent-soft:rgba(255,138,76,.16); --accent-contrast:#0b0e14;
+  --success:#4ade80; --warn:#fbbf24; --danger:#f87171;
+  --shadow-1:0 1px 2px rgba(0,0,0,.4); --shadow-2:0 4px 16px rgba(0,0,0,.45); --shadow-3:0 12px 40px rgba(0,0,0,.6);
+  --e1:#ff4d5e; --e2:#ff7a45; --e3:#ffa940; --e4:#ffd666;
+  --bld-dim:rgba(190,200,220,.20); --road-dim:rgba(190,200,220,.28);
+  --zone:#ff922b; --river:#38bdf8; --halo:rgba(10,12,17,.8);
+  --do1:#a78bfa; --do2:#60a5fa; --do3:#2dd4bf;
+  --map-bg:#0a0c11;
+  --mr-casing:rgba(0,0,0,.65); --mr-1:#e2e8f0; --mr-2:#94a3b8;
+  --contour:rgba(226,232,240,.26); --contour-i:rgba(226,232,240,.58); --outline:#5eead4; --hot:#a78bfa;
+}
+/* free satellite imagery: data colours are re-tuned for contrast on photographs, whichever UI theme is active */
+:root[data-base="imagery"]{
+  --river:#38bdf8; --halo:rgba(0,0,0,.55);
+  --bld-dim:rgba(255,255,255,.40); --road-dim:rgba(255,255,255,.55);
+  --mr-casing:rgba(0,0,0,.7); --mr-1:#ffffff; --mr-2:#fde68a;
+  --contour:rgba(255,255,255,.30); --contour-i:rgba(255,255,255,.72); --outline:#5eead4;
+  --hot:#d946ef; --zone:#ffa94d; --do1:#c4b5fd; --do2:#93c5fd; --do3:#5eead4;
+  --e1:#ff3b4e; --e2:#ff7a45; --e3:#ffb02e; --e4:#ffe066;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--text);font:13px/1.45 Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  font-variant-numeric:tabular-nums;overflow:hidden;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;cursor:pointer}
+svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex:none}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* ---- map ---- */
+#map{position:fixed;inset:0;height:100dvh;background:var(--map-bg)}
+.leaflet-container{background:var(--map-bg);font:inherit}
+.leaflet-tooltip{background:var(--surface-solid);color:var(--text);border:1px solid var(--border);box-shadow:var(--shadow-2);border-radius:8px}
+.leaflet-tooltip:before{display:none}
+.leaflet-control-attribution{display:none}
+canvas.packed{position:absolute;left:0;top:0;pointer-events:none}
+
+/* ---- surfaces ---- */
+.surface{background:var(--surface);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);
+  border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-2)}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.surface{background:var(--surface-solid)}}
+.mono-label{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-3);font-weight:600}
+
+/* ---- top bar ---- */
+.topbar{position:fixed;z-index:1000;top:12px;left:12px;right:12px;height:48px;display:flex;align-items:center;gap:12px;padding:0 8px 0 14px}
+.brand{display:flex;align-items:center;gap:10px;min-width:0}
+.brand b{font-size:14px;font-weight:650;letter-spacing:-.01em;white-space:nowrap}
+.brand span{color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dot{width:10px;height:10px;border-radius:50%;background:linear-gradient(135deg,var(--e1),var(--e4));box-shadow:0 0 0 3px var(--accent-soft)}
+.spacer{flex:1}
+.seg{display:inline-flex;background:var(--surface-2);border-radius:10px;padding:2px;border:1px solid var(--border)}
+.seg button{border:0;background:transparent;height:28px;min-width:30px;padding:0 8px;border-radius:8px;color:var(--text-2);display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:12px}
+.seg button[aria-pressed="true"]{background:var(--surface-solid);color:var(--text);box-shadow:var(--shadow-1)}
+.btn{height:32px;padding:0 12px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface-2);display:inline-flex;align-items:center;gap:6px;transition:transform .15s var(--ease),background .15s}
+.btn:hover{background:var(--surface-solid)} .btn:active{transform:scale(.97)}
+.iconbtn{width:32px;padding:0;justify-content:center}
+
+/* ---- rail ---- */
+.rail{position:fixed;z-index:1000;left:12px;top:72px;width:var(--rail-w);padding:6px;display:flex;flex-direction:column;gap:4px}
+.rail button{width:40px;height:40px;border-radius:10px;border:0;background:transparent;color:var(--text-2);display:grid;place-items:center;position:relative;transition:background .15s,color .15s}
+.rail button:hover{background:var(--surface-2);color:var(--text)}
+.rail button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent)}
+.rail button[aria-pressed="true"]::before{content:"";position:absolute;left:-7px;top:10px;bottom:10px;width:3px;border-radius:2px;background:var(--accent)}
+[data-tip]{position:relative}
+[data-tip]:hover::after{content:attr(data-tip);position:absolute;left:calc(100% + 10px);top:50%;transform:translateY(-50%);white-space:nowrap;
+  background:var(--surface-solid);color:var(--text);border:1px solid var(--border);box-shadow:var(--shadow-2);padding:4px 8px;border-radius:6px;font-size:12px;pointer-events:none;z-index:2000}
+.topbar [data-tip]:hover::after,.ctrls [data-tip]:hover::after{left:auto;right:0;top:calc(100% + 8px);transform:none}
+.ctrls [data-tip]:hover::after{right:calc(100% + 8px);top:50%;transform:translateY(-50%)}
+
+/* ---- flyout panels ---- */
+.flyout{position:fixed;z-index:999;left:72px;top:72px;width:var(--panel-w);max-height:calc(100dvh - 72px - 42px - var(--dock-h));display:flex;flex-direction:column;
+  transform-origin:left top;transition:transform .2s var(--ease),opacity .2s var(--ease)}
+.flyout[hidden]{display:none}
+.panel-head{display:flex;align-items:center;gap:8px;padding:12px 14px 10px}
+.panel-head h2{font-size:14px;margin:0;font-weight:650;letter-spacing:-.01em;flex:1}
+.panel-body{overflow:auto;padding:0 14px 14px;min-height:0;overscroll-behavior:contain}
+.section{padding:12px 0;border-top:1px solid var(--border)} .section:first-child{border-top:0;padding-top:2px}
+.section h3{margin:0 0 8px}
+.note{color:var(--text-2);font-size:12px}
+.note b{color:var(--text)}
+.warn{display:flex;gap:8px;align-items:flex-start;background:color-mix(in srgb,var(--warn) 12%,transparent);border:1px solid color-mix(in srgb,var(--warn) 30%,transparent);color:var(--text);padding:8px 10px;border-radius:var(--radius-sm);font-size:12px;margin-top:8px}
+
+/* exposure controls */
+.readout{display:flex;align-items:baseline;gap:6px;margin:2px 0 6px}
+.readout b{font-size:30px;font-weight:650;letter-spacing:-.03em;line-height:1}
+.readout span{color:var(--text-2)}
+input[type=range]{width:100%;accent-color:var(--accent);height:24px;margin:0}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.chip{border:1px solid var(--border);background:var(--surface-2);border-radius:999px;padding:3px 10px;font-size:12px;color:var(--text-2)}
+.chip:hover{color:var(--text)} .chip[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);border-color:color-mix(in srgb,var(--accent) 40%,transparent)}
+.chip.cal{border-style:dashed}
+.cards{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.card{background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:10px}
+.card .v{font-size:20px;font-weight:650;letter-spacing:-.02em;line-height:1.15}
+.card .u{color:var(--text-2);font-size:12px}
+.card .s{color:var(--text-3);font-size:11px;margin-top:2px}
+.card.off{opacity:.55}
+.skel{display:inline-block;width:70px;height:18px;border-radius:6px;background:linear-gradient(90deg,var(--surface-2),var(--border),var(--surface-2));background-size:200% 100%;animation:sh 1.2s linear infinite}
+@keyframes sh{to{background-position:-200% 0}}
+
+/* layer rows: a square with a tick, like Google's layer lists */
+.group-title{display:flex;align-items:center;justify-content:space-between;margin:14px 0 4px}
+.group-title:first-child{margin-top:2px}
+.lrow{border-radius:8px;margin:0 -6px}
+.lrow:hover{background:var(--surface-2)}
+.lrow.dis{opacity:.5}
+.lhead{display:flex;align-items:center;gap:6px;padding:4px 4px 4px 6px;min-height:36px}
+.lname{flex:1;min-width:0;display:flex;align-items:center;gap:10px;cursor:pointer;font-weight:500;padding:4px 0;user-select:none}
+.lrow.dis .lname{cursor:not-allowed}
+.cb{appearance:none;-webkit-appearance:none;width:18px;height:18px;margin:0;flex:none;border:2px solid var(--text-3);border-radius:4px;background:transparent;display:grid;place-items:center;cursor:pointer;transition:background .12s,border-color .12s}
+.cb:hover{border-color:var(--c,var(--accent))}
+.cb:checked{background:var(--c,var(--accent));border-color:var(--c,var(--accent))}
+.cb:checked::after{content:"";width:4px;height:9px;border:solid #fff;border-width:0 2px 2px 0;transform:translateY(-1px) rotate(45deg)}
+.cb:disabled{opacity:.45;cursor:not-allowed}
+.cb:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.sw{width:12px;height:12px;border-radius:4px;flex:none;border:1px solid var(--border);display:inline-block;vertical-align:-1px}
+.mini{width:26px;height:26px;border-radius:7px;border:0;background:transparent;color:var(--text-2);display:grid;place-items:center}
+.mini:hover{background:var(--surface-solid);color:var(--text)} .mini svg.i{width:16px;height:16px}
+.more svg{transition:transform .15s var(--ease)} .lrow.open .more svg{transform:rotate(180deg)}
+.lbody{padding:0 8px 10px 34px;display:none}
+.lrow.open .lbody{display:block}
+.ord{display:flex;align-items:center;gap:6px;margin-top:8px;color:var(--text-2);font-size:12px}
+.ord .mini{border:1px solid var(--border);background:var(--surface-solid)}
+.bms{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.bm{border:0;background:none;padding:0;text-align:center;font-size:11px;color:var(--text-2)}
+.bm .th{display:block;aspect-ratio:4/3;border-radius:10px;border:2px solid transparent;box-shadow:0 0 0 1px var(--border);background-color:var(--surface-2);background-size:cover;background-position:center;margin-bottom:4px;transition:transform .15s var(--ease)}
+.bm:hover .th{transform:translateY(-1px)}
+.bm[aria-pressed="true"] .th{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.bm[aria-pressed="true"]{color:var(--text);font-weight:600}
+.kpis{position:fixed;z-index:997;top:72px;left:var(--left);display:flex;gap:8px;pointer-events:none;transition:left .2s var(--ease)}
+.kpi{pointer-events:auto;padding:8px 14px;min-width:120px;border-radius:12px}
+.kpi .l{font-size:11px;color:var(--text-2)} .kpi .v{font-size:21px;font-weight:650;letter-spacing:-.02em;line-height:1.15} .kpi .s{font-size:11px;color:var(--text-3)}
+.leaflet-labels-pane{pointer-events:none}
+.lbody label{display:flex;align-items:center;gap:8px;color:var(--text-2);font-size:12px;margin-top:8px}
+.lbody label input[type=range]{flex:1}
+.legend{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-2);margin-top:8px}
+.ramp{display:flex;height:8px;border-radius:4px;overflow:hidden;flex:1}
+.ramp i{flex:1}
+
+/* dock */
+.dock{position:fixed;z-index:998;left:var(--left);right:12px;bottom:30px;height:var(--dock-h);display:flex;flex-direction:column;transition:height .2s var(--ease)}
+.dock.collapsed{--dock-h:44px}
+.dock-head{display:flex;align-items:center;gap:10px;padding:8px 10px 6px 14px;min-height:44px}
+.dock-head .readout{margin:0;flex:1;align-items:baseline}
+.dock-head .readout b{font-size:18px}
+#chart{flex:1;min-height:0;touch-action:none;cursor:ew-resize;position:relative}
+.dock.collapsed #chart{display:none}
+#chart svg{display:block;width:100%;height:100%}
+.ax{stroke:var(--border)} .axt{fill:var(--text-3);font-size:10px}
+.dragh{width:36px;height:4px;border-radius:2px;background:var(--border);margin:0 auto}
+
+/* inspector */
+.inspector{position:fixed;z-index:999;right:12px;top:140px;width:290px;transform:translateX(calc(100% + 24px));opacity:0;transition:transform .2s var(--ease),opacity .2s;pointer-events:none}
+.inspector.open{transform:none;opacity:1;pointer-events:auto}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:0}
+.kv dt{color:var(--text-2)} .kv dd{margin:0;text-align:right;font-weight:550}
+.pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:600}
+.pill.in{background:var(--accent-soft);color:var(--accent)} .pill.out{background:var(--surface-2);color:var(--text-2)}
+
+/* map controls */
+.ctrls{position:fixed;z-index:997;right:12px;bottom:calc(var(--dock-h) + 42px);display:flex;flex-direction:column;padding:4px;gap:2px;transition:bottom .2s var(--ease)}
+.dock.collapsed ~ .ctrls{bottom:calc(44px + 42px)}
+.ctrls button{width:34px;height:34px;border:0;background:transparent;border-radius:8px;color:var(--text);display:grid;place-items:center}
+.ctrls button:hover{background:var(--surface-2)}
+.ctrls button[aria-pressed="true"]{color:#2563eb}
+.ctrls{transition:right .2s var(--ease),bottom .2s var(--ease)}
+.ins-open .ctrls{right:314px}
+@media (max-width:767px){.ins-open .ctrls{display:none}}
+.busy svg{animation:pulse 1s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.3}}
+.mini:disabled{cursor:progress}
+.attrib{position:fixed;z-index:996;left:var(--left);right:12px;bottom:6px;font-size:10.5px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.progress{position:fixed;z-index:3000;left:0;top:0;height:3px;width:100%;background:linear-gradient(90deg,transparent,var(--accent),transparent);background-size:40% 100%;background-repeat:no-repeat;animation:pg 1s linear infinite}
+@keyframes pg{from{background-position:-40% 0}to{background-position:140% 0}}
+.progress.done{display:none}
+.toast{position:fixed;z-index:3000;left:50%;bottom:90px;transform:translateX(-50%);padding:8px 14px;border-radius:10px}
+.errcard{position:fixed;z-index:3000;inset:0;display:grid;place-items:center}
+.errcard div{max-width:420px;padding:20px}
+
+/* ---- search ---- */
+.search{position:relative;flex:1;max-width:480px;min-width:0;display:flex;align-items:center;gap:4px;height:34px;padding:0 4px 0 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;color:var(--text-2)}
+.search:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.search input{flex:1;min-width:0;border:0;background:transparent;color:var(--text);font:inherit;outline:none;height:100%}
+.search input::placeholder{color:var(--text-3)}
+.search kbd{font-size:11px;line-height:1;border:1px solid var(--border);border-radius:5px;padding:2px 5px;color:var(--text-3)}
+.search input:focus ~ kbd,.search input:not(:placeholder-shown) ~ kbd{display:none}
+#qres{position:absolute;top:42px;left:0;right:0;margin:0;padding:4px;list-style:none;background:var(--surface-solid);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow-3);max-height:340px;overflow:auto;color:var(--text)}
+#qres[hidden]{display:none}
+#qres li{padding:8px 10px;border-radius:8px;cursor:pointer}
+#qres li[aria-selected="true"],#qres li:hover{background:var(--surface-2)}
+#qres li .t{font-weight:550} #qres li .s{color:var(--text-2);font-size:12px}
+#qres li.msg{cursor:default;color:var(--text-2);font-size:12px} #qres li.msg:hover{background:none}
+/* ---- inspector: verdict + report ---- */
+.inspector{display:flex;flex-direction:column;max-height:calc(100dvh - 140px - var(--dock-h) - 48px)}
+.verdict{border-radius:10px;padding:10px 12px;margin-bottom:10px;border:1px solid var(--border);background:var(--surface-2)}
+.verdict b{display:block;font-size:14px}
+.verdict span{color:var(--text-2);font-size:12px}
+.verdict.in{background:var(--accent-soft);border-color:color-mix(in srgb,var(--accent) 45%,transparent)}
+.verdict.in b{color:var(--accent)}
+.rep{margin-top:12px;padding-top:12px;border-top:1px solid var(--border)}
+.rep p{margin:6px 0}
+.choices{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}
+.choice{min-height:40px;border-radius:10px;border:1px solid var(--border);background:var(--surface-2);font-weight:550}
+.choice:hover{background:var(--surface-solid)}
+.choice[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
+.rep .seg{display:flex;width:100%} .rep .seg button{flex:1}
+.chk{display:flex;align-items:center;gap:10px;margin:12px 0 10px;cursor:pointer;user-select:none}
+.btn.primary{background:var(--accent);color:var(--accent-contrast);border-color:transparent;width:100%;justify-content:center;font-weight:600;height:38px}
+.btn.primary:hover{background:var(--accent);filter:brightness(1.08)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.linkbtn{border:0;background:none;color:var(--accent);padding:0;text-decoration:underline;cursor:pointer}
+.small{font-size:11px;color:var(--text-3)}
+
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* ---- mobile: rail -> bottom bar, panels -> bottom sheets ---- */
+@media (max-width:767px){
+  :root{--left:12px;--dock-h:150px}
+  .brand span{display:none}
+  .kpis{display:none}
+  .brand b{display:none}
+  .topbar .spacer{display:none}
+  .search{max-width:none}
+  .search kbd{display:none}
+  .inspector{max-height:62dvh}
+  .rail{left:0;right:0;top:auto;bottom:0;width:auto;flex-direction:row;justify-content:space-around;border-radius:var(--radius) var(--radius) 0 0;padding:6px 6px calc(6px + env(safe-area-inset-bottom));z-index:1001}
+  .rail button{width:56px}
+  .rail button[aria-pressed="true"]::before{left:12px;right:12px;top:-6px;bottom:auto;width:auto;height:3px}
+  [data-tip]:hover::after{display:none}
+  .flyout{left:0;right:0;top:auto;bottom:62px;width:auto;max-height:56dvh;border-radius:var(--radius) var(--radius) 0 0;z-index:1000}
+  .dock{bottom:70px;left:12px}
+  .dock.collapsed{--dock-h:44px}
+  .attrib{display:none}
+  #serSeg{display:none!important}
+  .dock-head .readout{white-space:nowrap;gap:4px}
+  .dock-head .readout span{overflow:hidden;text-overflow:ellipsis}
+  .ctrls{bottom:calc(var(--dock-h) + 80px)}
+  .dock.collapsed ~ .ctrls{bottom:calc(44px + 80px)}
+  .inspector{top:auto;bottom:70px;left:12px;right:12px;width:auto;transform:translateY(calc(100% + 100px))}
+}
+/* ---- new controls: stepper, presets, stepped opacity, quick toggles, FAB ---- */
+.stepper{display:flex;align-items:center;gap:8px;margin:6px 0 8px}
+.stepper button{width:44px;height:44px;flex:none;border-radius:12px;border:1px solid var(--border);background:var(--surface-2);display:grid;place-items:center}
+.stepper button:hover:not(:disabled){background:var(--surface-solid)} .stepper button:active:not(:disabled){transform:scale(.95)}
+.stepper button:disabled{opacity:.35;cursor:not-allowed}
+.stepper .readout{flex:1;justify-content:center;margin:0}
+.chips{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.chip{min-height:36px;border-radius:10px;text-align:center}
+.chip.cal{grid-column:span 2}
+.oprow{display:flex;align-items:center;gap:8px;color:var(--text-2);font-size:12px;margin-top:8px}
+.oprow .seg{margin-left:auto}
+.seg.wide{display:flex;width:100%} .seg.wide button{flex:1;height:34px}
+.rail .lbl,.tapmore,.fab,.quick{display:none}
+.quick{position:fixed;z-index:997;gap:8px;overflow-x:auto;scrollbar-width:none;padding:2px 10px}
+.quick::-webkit-scrollbar{display:none}
+.qchip{flex:none;height:36px;padding:0 13px 0 11px;border-radius:999px;border:1px solid var(--border);background:var(--surface-solid);color:var(--text-3);box-shadow:var(--shadow-1);display:inline-flex;align-items:center;gap:7px;font-weight:550;transition:transform .12s var(--ease)}
+.qchip:active{transform:scale(.96)}
+.qchip .sw{opacity:.35}
+.qchip[aria-pressed="true"]{color:var(--text);border-color:color-mix(in srgb,var(--accent) 55%,var(--border))}
+.qchip[aria-pressed="true"] .sw{opacity:1}
+.fab{position:fixed;z-index:997;left:50%;transform:translateX(-50%);height:48px;padding:0 20px;border-radius:999px;border:0;background:var(--accent);color:var(--accent-contrast);font-weight:650;box-shadow:var(--shadow-3);align-items:center;gap:8px;white-space:nowrap}
+.fab:active{transform:translateX(-50%) scale(.97)}
+.fab.busy{opacity:.7}
+
+/* ---- by-river list and hotspot list ---- */
+.rv,.hs{display:block;width:100%;text-align:left;border:1px solid var(--border);background:var(--surface-2);border-radius:10px;padding:8px 10px;margin-bottom:6px;position:relative}
+.rv:hover,.hs:hover{background:var(--surface-solid)}
+.rv[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
+.rv{display:grid;grid-template-columns:1fr auto;gap:2px 8px}
+.rvn{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rvv{font-weight:650;text-align:right}
+.rvbar{grid-column:1/-1;height:4px;border-radius:2px;background:var(--border);overflow:hidden}
+.rvbar i{display:block;height:100%;background:var(--accent);border-radius:2px}
+.rvs{grid-column:1/-1;color:var(--text-2);font-size:11.5px}
+.rvclear{margin-bottom:8px}
+.hs{display:grid;grid-template-columns:28px 1fr auto;gap:10px;align-items:center}
+.hs .rk{width:26px;height:26px;border-radius:50%;background:var(--hot);color:#fff;display:grid;place-items:center;font-weight:700;font-size:12px}
+.hs .hsn{min-width:0;font-weight:600} .hs .hsn small{display:block;font-weight:400;color:var(--text-2);font-size:11.5px}
+.hs .hsv{text-align:right;font-size:12px;color:var(--text-2);line-height:1.35} .hs .hsv b{font-size:15px;color:var(--text)}
+.hotnum b{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--hot);color:#fff;font:700 12px/1 system-ui;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)}
+
+/* ---- phone layout (primary): map full-bleed, search on top, sheets from the bottom ---- */
+@media (max-width:767px){
+  :root{--left:10px;--nav-h:calc(60px + env(safe-area-inset-bottom));--pill-h:46px}
+  .topbar{top:max(10px,env(safe-area-inset-top));left:10px;right:10px;height:52px;padding:0 6px 0 6px;border-radius:16px}
+  .brand,.topbar #themeSeg,.topbar .spacer{display:none}
+  .search{height:40px;max-width:none;border-radius:12px}
+  .search input{font-size:16px}  /* 16px stops iOS zooming the page on focus */
+  .quick{display:flex;top:calc(max(10px,env(safe-area-inset-top)) + 60px);left:0;right:0}
+  /* bottom tab bar */
+  .rail{left:0;right:0;bottom:0;top:auto;width:auto;height:var(--nav-h);padding:4px 8px env(safe-area-inset-bottom);flex-direction:row;gap:4px;border-radius:18px 18px 0 0;z-index:1002}
+  .rail button{flex:1;width:auto;height:52px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border-radius:12px}
+  .rail .lbl{display:block;font-size:11px;font-weight:600;letter-spacing:.01em}
+  .rail button[aria-pressed="true"]::before{left:30%;right:30%;top:-4px;bottom:auto;width:auto;height:3px}
+  /* sheets */
+  .flyout{left:0;right:0;top:auto;bottom:var(--nav-h);width:auto;max-height:70dvh;border-radius:20px 20px 0 0;border-bottom:0;z-index:1001}
+  .flyout::before{content:"";display:block;width:38px;height:4px;border-radius:2px;background:var(--border);margin:8px auto 0}
+  .panel-head{padding:8px 16px 8px}
+  .panel-body{padding:0 16px 20px}
+  /* summary pill: tap for the Exposure sheet */
+  .dock,.dock.collapsed{left:10px;right:10px;bottom:calc(var(--nav-h) + 8px);--dock-h:var(--pill-h);height:var(--pill-h);border-radius:16px;cursor:pointer;z-index:998}
+  .dock .dock-head{min-height:var(--pill-h);padding:0 14px}
+  #dockToggle,#serSeg,#chart{display:none!important}
+  .tapmore{display:inline-flex;align-items:center;gap:2px;color:var(--accent);font-weight:600;font-size:12px}
+  .tapmore svg.i{width:16px;height:16px}
+  .dock-head .readout b{font-size:19px}
+  /* primary action + controls */
+  .fab{display:inline-flex;bottom:calc(var(--nav-h) + var(--pill-h) + 22px)}
+  .dock.collapsed ~ .ctrls,.ctrls{right:10px;bottom:calc(var(--nav-h) + var(--pill-h) + 22px);z-index:997}
+  #zin,#zout,#locBtn{display:none}
+  .ctrls button{width:44px;height:44px}
+  .kpis{display:none}
+  /* inspector as a sheet */
+  .inspector{left:0;right:0;top:auto;bottom:var(--nav-h);width:auto;max-height:72dvh;border-radius:20px 20px 0 0;z-index:1001;transform:translateY(calc(100% + 80px))}
+  .inspector.open{transform:none}
+  body.panel-open .dock,body.panel-open .fab,body.panel-open .ctrls,
+  body.ins-open .dock,body.ins-open .fab,body.ins-open .ctrls,body.ins-open .flyout{display:none}
+  /* touch targets */
+  .mini{width:40px;height:40px}
+  .lhead{min-height:48px}
+  .cb{width:22px;height:22px}
+  .cb:checked::after{width:5px;height:11px}
+  .lname{font-size:14px;gap:12px}
+  .chip{min-height:44px;font-size:13px}
+  .choice{min-height:52px;font-size:15px}
+  .btn.primary{height:48px;font-size:15px}
+  .seg button{height:36px;min-width:36px}
+  .oprow .seg button{height:34px}
+  .chk{margin:14px 0 12px}
+  .toast{bottom:calc(var(--nav-h) + var(--pill-h) + 80px);width:calc(100% - 32px);text-align:center}
+}
+/* welcome card */
+.welcome{position:fixed;inset:0;z-index:2000;display:flex;align-items:center;justify-content:center;padding:16px;
+  background:rgba(8,11,18,.5);opacity:0;pointer-events:none;transition:opacity .2s var(--ease)}
+.welcome.open{opacity:1;pointer-events:auto}
+.welcome .card{width:min(560px,100%);max-height:calc(100dvh - 32px);overflow:auto;border-radius:var(--radius);
+  border:1px solid var(--border);background:var(--surface-solid);color:var(--text);box-shadow:var(--shadow-3);
+  padding:22px 22px 18px;transform:translateY(8px);transition:transform .2s var(--ease)}
+.welcome.open .card{transform:none}
+.welcome h2{margin:0 0 10px;font-size:20px;line-height:1.25;letter-spacing:-.01em}
+.welcome p{margin:0 0 10px;font-size:14px;line-height:1.55;color:var(--text-2)}
+.welcome p.lead{color:var(--text);font-size:15px}
+.welcome .go{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.welcome .go button{min-height:44px;padding:0 16px;border-radius:var(--radius-sm);border:1px solid var(--border);
+  background:var(--surface-2);color:var(--text);font:inherit;font-weight:600;cursor:pointer}
+.welcome .go button.primary{background:var(--accent);color:var(--accent-contrast);border-color:transparent}
+.welcome .go button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (max-width:767px){.welcome{align-items:flex-end;padding:0}
+  .welcome .card{border-radius:var(--radius) var(--radius) 0 0;padding:20px 16px calc(16px + env(safe-area-inset-bottom))}
+  .welcome .go button{flex:1}}
+@media (prefers-reduced-motion:reduce){.welcome,.welcome .card{transition:none}}
+</style>
+</head>
+<body>
+<div id="map" role="application" aria-label="Map of river odour exposure"></div>
+<div class="progress" id="progress" role="progressbar" aria-label="Loading"></div>
+
+<header class="topbar surface">
+  <div class="brand"><i class="dot"></i><b>Kathmandu rivers</b><span>odour exposure: who and what lies within reach</span></div>
+  <div class="spacer"></div>
+  <div class="search" id="search" role="search">
+    <svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+    <input id="q" type="text" placeholder="Search your street or area" autocomplete="off" spellcheck="false" aria-label="Search for a street address or place" role="combobox" aria-expanded="false" aria-controls="qres" aria-autocomplete="list">
+    <kbd>/</kbd>
+    <button class="mini" id="locate" aria-label="Use my location" data-tip="Use my location"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="7"/></svg></button>
+    <ul id="qres" role="listbox" hidden></ul>
+  </div>
+  <div class="seg themeSeg" role="group" aria-label="Theme" id="themeSeg">
+    <button data-pref="light" aria-label="Light theme" data-tip="Light" aria-pressed="false"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+    <button data-pref="dark" aria-label="Dark theme" data-tip="Dark" aria-pressed="false"><svg class="i" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
+    <button data-pref="system" aria-label="Follow system theme" data-tip="System" aria-pressed="false"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></button>
+  </div>
+</header>
+
+<nav class="rail surface" aria-label="Tools">
+  <button id="rb-exposure" data-panel="exposure" aria-label="Exposure" data-tip="Exposure  (E)" aria-pressed="true"><svg class="i" viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg><span class="lbl">Exposure</span></button>
+  <button id="rb-layers" data-panel="layers" aria-label="Layers" data-tip="Layers  (L)" aria-pressed="false"><svg class="i" viewBox="0 0 24 24"><path d="m12 2 10 5-10 5L2 7z"/><path d="m2 12 10 5 10-5"/><path d="m2 17 10 5 10-5"/></svg><span class="lbl">Layers</span></button>
+  <button id="rb-hotspots" data-panel="hotspots" aria-label="Hotspots" data-tip="Hotspots  (H)" aria-pressed="false"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2"/></svg><span class="lbl">Hotspots</span></button>
+  <button id="rb-about" data-panel="about" aria-label="Method and caveats" data-tip="Method  (M)" aria-pressed="false"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg><span class="lbl">Method</span></button>
+</nav>
+
+<!-- Exposure -->
+<section class="flyout surface" id="p-exposure" aria-label="Exposure">
+  <div class="panel-head"><h2>Exposure</h2><button class="mini" data-close aria-label="Close panel"><svg class="i" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+  <div class="panel-body">
+    <div class="section">
+      <div class="mono-label">Distance from nearest river</div>
+      <div class="stepper">
+        <button id="dminus" aria-label="Decrease distance by 50 metres"><svg class="i" viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
+        <div class="readout"><b id="tv">0</b><span>m</span></div>
+        <button id="dplus" aria-label="Increase distance by 50 metres"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+      </div>
+      <div class="chips" id="chips" role="group" aria-label="Distance presets"></div>
+      <p class="note" id="reachNote" style="margin:10px 0 0"></p>
+    </div>
+    <div class="section">
+      <div class="mono-label" style="margin-bottom:8px">Inside this distance</div>
+      <div class="cards" id="cards"></div>
+      <div id="popWarn"></div>
+    </div>
+    <div class="section" id="riverSec">
+      <div class="mono-label" style="margin-bottom:6px">By river</div>
+      <p class="note" style="margin:0 0 8px">The map applies <b>one distance rule to every river</b>. Rivers are not alike (flow, sewage load, covered reaches) and there is no per-river odour data yet. Tap a river to see it on its own.</p>
+      <div id="riverList"></div>
+      <p class="note" id="reachNotes" style="margin:8px 0 0"></p>
+    </div>
+    <div class="section">
+      <div class="mono-label" style="margin-bottom:6px">Reading the map</div>
+      <p class="note" style="margin:0">Buildings and roads are coloured by how close they are to a river: <b>darker red is closest</b>, amber is at the edge of the chosen distance. Grey is outside it. The shaded area is the exposure zone.</p>
+    </div>
+  </div>
+</section>
+
+<!-- Layers -->
+<section class="flyout surface" id="p-layers" aria-label="Layers" hidden>
+  <div class="panel-head"><h2>Layers</h2><button class="mini" data-close aria-label="Close panel"><svg class="i" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+  <div class="panel-body">
+    <div class="section"><div class="mono-label" style="margin-bottom:8px">Map type</div><div class="bms" id="bms"></div></div>
+    <div id="layerList"></div>
+    <div class="section" style="margin-top:12px"><div class="mono-label" style="margin-bottom:8px">Appearance</div>
+      <div class="seg themeSeg wide" role="group" aria-label="Theme"><button data-pref="light" aria-pressed="false">Light</button><button data-pref="dark" aria-pressed="false">Dark</button><button data-pref="system" aria-pressed="false">Auto</button></div></div>
+  </div>
+</section>
+
+<!-- Hotspots -->
+<section class="flyout surface" id="p-hotspots" aria-label="Hotspots" hidden>
+  <div class="panel-head"><h2>Hotspots</h2><button class="mini" data-close aria-label="Close panel"><svg class="i" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+  <div class="panel-body">
+    <div class="section">
+      <div class="mono-label" style="margin-bottom:6px">Where exposure is concentrated</div>
+      <p class="note" id="hsSummary" style="margin:0"></p>
+      <div class="seg wide" id="hsRank" role="group" aria-label="Rank hotspots by" style="margin-top:10px"><button data-k="b" aria-pressed="true">Most buildings</button><button data-k="p" aria-pressed="false">Most people</button></div>
+    </div>
+    <div class="section"><div id="hsList"></div></div>
+    <div class="section">
+      <div class="mono-label" style="margin-bottom:6px">How to read this</div>
+      <p class="note" style="margin:0 0 6px">Squares are 200 m. A hotspot is an area with an unusually large number of buildings within the chosen distance of a river, compared with the other exposed areas (Getis-Ord Gi*; <b>strong</b> = z of 3.3 or more, <b>clustered</b> = 2.6 or more).</p>
+      <p class="note" style="margin:0 0 6px"><b>Households are not in any open dataset used here.</b> Buildings are the proxy: an apartment block holds many households, a shed none. People come from WorldPop, which looks inflated in this valley, so use them to compare areas, not as a headcount.</p>
+      <p class="note" style="margin:0">A hotspot means many homes close to a river. It does not mean the smell there is worse, and rivers differ, so check the river named on each row.</p>
+    </div>
+  </div>
+</section>
+
+<!-- About -->
+<section class="flyout surface" id="p-about" aria-label="Method and caveats" hidden>
+  <div class="panel-head"><h2>Method and caveats</h2><button class="mini" data-close aria-label="Close panel"><svg class="i" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+  <div class="panel-body note">
+    <div class="section"><button type="button" id="wReopen" class="mini" style="width:auto;padding:0 12px;min-height:36px">Why this map</button></div>
+    <div class="section"><div class="mono-label" style="margin-bottom:6px">What is assumed</div>
+      <p style="margin:0"><b>No odour distance.</b> The distance is whatever you set. A fitted odour reach appears only if field observations were run through <code>calibrate</code> (see the dashed chips and contours); until then the map shows exposure at any chosen distance, not a claim about where the smell reaches.</p></div>
+    <div class="section"><div class="mono-label" style="margin-bottom:6px">Distances</div>
+      <p style="margin:0">Metres in UTM 45N, from each building footprint's edge or each 25 m road piece's midpoint to the nearest OSM river line. OSM may omit covered (culverted) reaches.</p></div>
+    <div class="section"><div class="mono-label" style="margin-bottom:6px">Sources</div>
+      <p style="margin:0">Rivers, buildings, roads: OpenStreetMap contributors (ODbL), fetched in cached Overpass tiles. Terrain: Copernicus GLO-30. People: WorldPop 2020. Multipolygon buildings and footpaths are not included.</p></div>
+    <div class="section"><div class="mono-label" style="margin-bottom:6px">Basemap and valley</div>
+      <p style="margin:0">Satellite imagery is Esri World Imagery; Map is CARTO (follows the theme); Terrain is OpenTopoMap. All are free public tile servers and need an internet connection. The <b>valley outline</b> is the drainage basin of the valley floor, found by a watershed on the elevation model, so no rim height is assumed. Contours come from the same model. Major roads are OSM motorway to tertiary, valley-wide. The ridge-line joyplot is an optional overlay.</p></div>
+    <div class="section"><div class="mono-label" style="margin-bottom:6px">Rivers are not alike</div>
+      <p style="margin:0">This map gives every river the same distance rule because no measurement says otherwise. In reality flow, sewage load, covered (culverted) reaches and season change how a river smells, and only the named rivers are mapped. To stop assuming: <b>By river</b> in Exposure shows each river's own exposure and lets you look at one alone; each smell report stores the nearest river, and <code>calibrate --by-river</code> fits a separate reach for every river that has enough reports (rivers without enough are listed, not guessed). Measured water quality (<code>stations.csv</code>) is shown where supplied.</p></div>
+    <div class="section"><div class="mono-label" style="margin-bottom:6px">Hotspots</div>
+      <p style="margin:0">Hotspots use Getis-Ord Gi* on 200 m squares of exposed buildings, comparing each exposed square with the other exposed squares at the same distance. The place name on each row comes from OpenStreetMap's Nominatim reverse geocoder (only the hotspot centre is sent); if it cannot be reached the row shows coordinates. Households are not available; buildings are the proxy, and WorldPop people look inflated.</p></div>
+    <div class="section"><div class="mono-label" style="margin-bottom:6px">Search and smell reports</div>
+      <p style="margin:0">Search sends the text you type to a public geocoder (Photon, or OpenStreetMap Nominatim as a fallback); nothing else leaves the page. The location button asks your browser for permission only when pressed; your position is used on this page and is not stored or sent unless you submit a report (rounded to about 10 m). The result says how far the spot is from the nearest mapped river and whether it is inside the zone you chose. <b>That is a distance, not a smell forecast.</b> A report records the spot rounded to about 10 m (never the typed address), the Kathmandu time, and your yes/no. Reports are self-selected (people who smell something report more), so they show where the map disagrees with experience; they are not a random sample.</p>
+      <p style="margin:8px 0 0" id="repAbout"></p></div>
+    <div class="section"><div class="mono-label" style="margin-bottom:6px">Keys</div>
+      <p style="margin:0"><b>/</b> search, <b>E</b> exposure, <b>L</b> layers, <b>M</b> method, <b>[ ]</b> collapse panel / chart, <b>Esc</b> close, <b>&larr; &rarr;</b> change distance.</p></div>
+  </div>
+</section>
+
+<aside class="inspector surface" id="inspector" aria-label="Inspector">
+  <div class="panel-head"><h2 id="insTitle">Point</h2><button class="mini" id="insClose" aria-label="Close inspector"><svg class="i" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+  <div class="panel-body" id="insBody"></div>
+</aside>
+
+<div class="dock surface" id="dock">
+  <div class="dock-head">
+    <div class="readout"><b id="dockV">-</b><span id="dockU"></span></div>
+    <div class="seg" id="serSeg" role="group" aria-label="Series"></div>
+    <span class="tapmore">Details<svg class="i" viewBox="0 0 24 24"><path d="m6 15 6-6 6 6"/></svg></span>
+    <button class="mini" id="dockToggle" aria-label="Collapse chart" data-tip="Collapse  ( ] )"><svg class="i" viewBox="0 0 24 24" id="dockIcon"><path d="m6 9 6 6 6-6"/></svg></button>
+  </div>
+  <div id="chart" aria-label="Cumulative exposure by distance. Drag to change the distance."></div>
+</div>
+
+<div class="ctrls surface" id="ctrls">
+  <button id="locBtn" aria-label="Show my location" aria-pressed="false" data-tip="My location"><svg class="i" viewBox="0 0 24 24"><path d="M3 11 21 3l-8 18-2-8z"/></svg></button>
+  <button id="zin" aria-label="Zoom in"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+  <button id="zout" aria-label="Zoom out"><svg class="i" viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
+  <button id="fit" aria-label="Fit to valley" data-tip="Fit to valley"><svg class="i" viewBox="0 0 24 24"><path d="M3 9V4h5M21 9V4h-5M3 15v5h5M21 15v5h-5"/></svg></button>
+</div>
+<div class="kpis" id="kpis" aria-live="polite"></div>
+<div class="quick" id="quick" role="group" aria-label="Quick layer toggles"></div>
+<button class="fab" id="fab" aria-label="Check my location"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="7"/></svg>Check my location</button>
+<div class="attrib" id="attrib"></div>
+
+<div class="welcome" id="welcome" role="dialog" aria-modal="true" aria-labelledby="wTitle" hidden>
+  <div class="card">
+    <h2 id="wTitle">A city can look beautiful and still smell of its rivers</h2>
+    <p class="lead">The roads are neat, trees are planted to green the living spaces, and the infrastructure is managed. But the water that runs through the city is polluted.</p>
+    <p>Every walking passer-by, every daily commuter and every family living near a river breathes that foul odour, and many have built up a tolerance to it. Are they living the same quality of life as people far from the rivers? A river could be a beautiful backyard. With unmanaged banks and failing sewage systems, it becomes a health hazard. That is the reality of Kathmandu.</p>
+    <p>We proudly show the snow-capped mountains and the mimosa-lined Durbar Marg. What the eyes miss is what the nose notices. A beautiful place should smell pleasant, and for people living along the river banks of the valley that is unlikely.</p>
+    <p>This map shows the buildings and neighbourhoods near the rivers, and how many there are. Explore it, check your own address, and tell us whether it matches what you smell. Something has to be done to make Kathmandu beautiful not only for the eyes, but for the nose as well.</p>
+    <div class="go"><button class="primary" id="wExplore" type="button">Explore the map</button><button id="wCheck" type="button">Check my address</button></div>
+  </div>
+</div>
+
+<script src="vendor/leaflet.js"></script>
+<script src="data_meta.js"></script>
+<script src="config.js" onerror="void 0"></script>
+<script src="data_valley.js" onerror="void 0"></script>
+<script src="data_mroads.js" onerror="void 0"></script>
+<script src="data_buildings.js" onerror="void 0"></script>
+<script src="data_roads.js" onerror="void 0"></script>
+<script src="basemap_meta.js" onerror="void 0"></script>
+<script>
+(function () {
+'use strict';
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const fmt = n => Math.round(n).toLocaleString('en-US');
+const ICON = {
+  eye: '<svg class="i" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
+  eyeoff: '<svg class="i" viewBox="0 0 24 24"><path d="M3 3l18 18"/><path d="M10.6 6.1A10.9 10.9 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4.2M6.6 6.7A17 17 0 0 0 2 12s3.5 7 10 7a10.8 10.8 0 0 0 4.4-.9"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>',
+  up: '<svg class="i" viewBox="0 0 24 24"><path d="m6 15 6-6 6 6"/></svg>',
+  down: '<svg class="i" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>',
+  sliders: '<svg class="i" viewBox="0 0 24 24"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>'
+};
+const tok = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+};
+
+/* ------------------------------------------------------------------ guard */
+const D = window.KTM;
+if (!D) {
+  $('#progress').classList.add('done');
+  document.body.insertAdjacentHTML('beforeend', '<div class="errcard"><div class="surface"><h2 style="margin:0 0 6px">Map data not found</h2><p class="note">data_meta.js is missing next to this page. Re-run <code>kathmandu_odour_map.py</code>, then reload.</p><button class="btn" onclick="location.reload()">Retry</button></div></div>');
+  return;
+}
+const PK = window.KTM_DATA || {};
+const BASE = window.KTM_BASE || null;
+const COS_PHI = Math.cos(27.7 * Math.PI / 180);
+
+/* ------------------------------------------------------------------ state (mirrored in URL hash) */
+const V = window.KTM_VALLEY || null, MR = window.KTM_MROADS || null;
+const state = { T: 250, hidden: new Set(['base', 'hot']), order: [], op: {}, bm: 'sat', focus: null };
+D.rivers = D.rivers || []; D.reach_notes = D.reach_notes || [];
+const HS = D.hotspots || null;
+(function readHash() {
+  const h = new URLSearchParams(location.hash.slice(1));
+  if (h.has('d')) state.T = Math.max(0, Math.min(D.max_dist, +h.get('d') || 0));
+  if (h.has('off')) state.hidden = new Set(h.get('off').split(',').filter(Boolean));
+  if (['sat', 'map', 'terrain', 'none'].includes(h.get('b'))) state.bm = h.get('b');
+  if (h.has('r') && isFinite(+h.get('r')) && D.rivers[+h.get('r')]) state.focus = +h.get('r');
+  if (h.has('t') && ['light', 'dark', 'system'].includes(h.get('t'))) store.set('ktm-theme', h.get('t'));
+})();
+let hashTimer = 0;
+function writeHash() {
+  clearTimeout(hashTimer);
+  hashTimer = setTimeout(() => {
+    const c = map.getCenter();
+    const h = new URLSearchParams();
+    h.set('d', state.T); h.set('t', document.documentElement.dataset.pref); h.set('b', state.bm);
+    h.set('off', [...state.hidden].join(','));
+    if (state.focus != null) h.set('r', state.focus);
+    h.set('v', `${c.lat.toFixed(4)},${c.lng.toFixed(4)},${map.getZoom().toFixed(2)}`);
+    try { history.replaceState(null, '', '#' + h.toString()); } catch (e) {}
+  }, 250);
+}
+
+/* ------------------------------------------------------------------ map */
+const map = L.map('map', { zoomControl: false, attributionControl: false, zoomAnimation: false, fadeAnimation: false,
+  markerZoomAnimation: false, zoomSnap: 0.25, zoomDelta: 0.5, minZoom: 9, maxZoom: 19 });
+const paneZ = {};
+function mkPane(n, z) { const p = map.createPane(n); p.style.zIndex = z; paneZ[n] = p; return p; }
+mkPane('tiles', 150);
+['base', 'contour', 'zone', 'rings', 'hot', 'mroad', 'road', 'bld', 'river', 'outline', 'cal', 'pts'].forEach((n, i) => mkPane(n, 200 + i * 10));
+mkPane('labels', 640);
+
+const riverBounds = L.geoJSON(D.lines).getBounds();
+const viewBounds = V ? L.geoJSON(V.outline).getBounds() : riverBounds;
+function panelInsets() {
+  const mobile = innerWidth < 768;
+  const left = mobile ? 12 : 72;
+  const flyOpen = !$('.flyout:not([hidden])') ? 0 : (mobile ? 0 : $('.flyout:not([hidden])').offsetWidth + 8);
+  return { tl: [left + flyOpen + 8, mobile ? 118 : 76], br: [20, (mobile ? 190 : $('#dock').offsetHeight + 56)] };
+}
+function fit() { const p = panelInsets(); map.fitBounds(viewBounds, { paddingTopLeft: p.tl, paddingBottomRight: p.br, animate: false }); }
+const hv = new URLSearchParams(location.hash.slice(1)).get('v');
+if (hv) { const [la, lo, z] = hv.split(',').map(Number); if ([la, lo, z].every(isFinite)) map.setView([la, lo], z, { animate: false }); else fit(); } else fit();
+map.on('moveend zoomend', writeHash);
+
+/* ------------------------------------------------------------------ packed canvas layer (footprints / road pieces) */
+function decode(spec) {
+  const bin = atob(spec.b64), u8 = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+  const n = spec.n, m = spec.m; let o = 0;
+  const buf = u8.buffer, take = (T, k) => { const a = new T(buf, o, k); o += a.BYTES_PER_ELEMENT * k; return a; };
+  const fx = take(Int32Array, n), fy = take(Int32Array, n), nv = take(Uint16Array, n), dist = take(Uint16Array, n);
+  const dx = take(Int16Array, m), dy = take(Int16Array, m), cls = spec.has_cls ? take(Uint8Array, n) : null;
+  const wx = new Float64Array(n), wy = new Float64Array(n), vs = new Uint32Array(n + 1);
+  for (let i = 0; i < n; i++) {
+    const lon = spec.lon0 + fx[i] * 1e-6, phi = (spec.lat0 + fy[i] * 1e-6) * Math.PI / 180;
+    wx[i] = (lon + 180) / 360;
+    wy[i] = (1 - Math.log(Math.tan(phi) + 1 / Math.cos(phi)) / Math.PI) / 2;
+    vs[i + 1] = vs[i] + nv[i] - 1;
+  }
+  return { n, fx, fy, nv, dist, dx, dy, cls, wx, wy, vs, lat0: spec.lat0 };
+}
+
+class Packed {
+  constructor(pane, data, kind) {
+    this.d = data; this.kind = kind; this.visible = true; this.opacity = 1; this.riverSel = null; this.exposedOnly = true; /* imagery already shows every building; colour only the exposed ones */
+    this.c = document.createElement('canvas'); this.c.className = 'packed';
+    map.getPane(pane).appendChild(this.c);
+    this.pending = 0;
+  }
+  setVisible(v) { this.visible = v; this.c.style.display = v ? '' : 'none'; if (v) this.redraw(); }
+  setOpacity(o) { this.opacity = o; this.c.style.opacity = o; }
+  redraw() { if (this.pending || !this.visible) return; this.pending = requestAnimationFrame(() => { this.pending = 0; this.draw(); }); }
+  draw() {
+    const d = this.d, size = map.getSize(), dpr = window.devicePixelRatio || 1;
+    const W = Math.round(size.x * 2), H = Math.round(size.y * 2);
+    const c = this.c;
+    if (c.width !== W * dpr || c.height !== H * dpr) { c.width = W * dpr; c.height = H * dpr; c.style.width = W + 'px'; c.style.height = H + 'px'; }
+    const tl = map.containerPointToLayerPoint([-size.x * 0.5, -size.y * 0.5]);
+    L.DomUtil.setPosition(c, tl);
+    const ctx = c.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+    const z = map.getZoom(), S = 256 * Math.pow(2, z), po = map.getPixelOrigin();
+    const ox = po.x + tl.x, oy = po.y + tl.y;
+    const kx = 1e-6 / 360 * S, ky = kx / COS_PHI;
+    const b = map.getBounds(), pad = 0.5;
+    const south = b.getSouth() - (b.getNorth() - b.getSouth()) * pad, north = b.getNorth() + (b.getNorth() - b.getSouth()) * pad;
+    const qS = (south - d.lat0) * 1e6 - 400, qN = (north - d.lat0) * 1e6 + 400;
+    let lo = 0, hi = d.n;
+    while (lo < hi) { const m = (lo + hi) >> 1; if (d.fy[m] < qS) lo = m + 1; else hi = m; }
+    const start = lo; hi = d.n;
+    while (lo < hi) { const m = (lo + hi) >> 1; if (d.fy[m] <= qN) lo = m + 1; else hi = m; }
+    const end = lo;
+    const T = state.T, isLine = this.kind === 'line', sel = this.riverSel && d.cls ? this.riverSel : null;
+    const ramp = [isLine ? tok('--road-dim') : tok('--bld-dim'), tok('--e1'), tok('--e2'), tok('--e3'), tok('--e4')];
+    const lw = Math.max(0.8, Math.min(4, (z - 11) * 0.55));
+    const edge = !isLine && z >= 16.5, halo = tok('--halo');
+    const dots = !isLine && z < 15.5, ds = Math.max(1.6, Math.min(3.2, (z - 10) * 0.45));
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    /* Big single paths rasterise super-linearly; flush in small batches. Class 0 (outside) is drawn first. */
+    const CH = 1200, P = [new Path2D(), new Path2D(), new Path2D(), new Path2D(), new Path2D()], cnt = [0, 0, 0, 0, 0];
+    const flush = k => {
+      if (!cnt[k]) return;
+      if (isLine) { ctx.lineWidth = k ? lw + 0.4 : lw; ctx.strokeStyle = ramp[k]; ctx.stroke(P[k]); }
+      else { ctx.fillStyle = ramp[k]; ctx.fill(P[k]); if (edge && k) { ctx.lineWidth = 0.6; ctx.strokeStyle = halo; ctx.stroke(P[k]); } }
+      P[k] = new Path2D(); cnt[k] = 0;
+    };
+    // pass 0: outside, pass 1: exposed (so exposed sits on top)
+    for (let pass = 0; pass < 2; pass++) {
+      if (pass === 0 && this.exposedOnly) continue;
+      for (let i = start; i < end; i++) {
+        if (sel && !sel.has(d.cls[i])) continue;      /* river focus: only features nearest to the chosen river */
+        const dist = d.dist[i];
+        const k = T > 0 && dist <= T ? 1 + Math.min(3, (dist / T * 4) | 0) : 0;
+        if ((k === 0) !== (pass === 0)) continue;
+        let x = d.wx[i] * S - ox; if (x < -80 || x > W + 80) continue;
+        let y = d.wy[i] * S - oy; const p = P[k];
+        if (dots) { p.rect(x - ds / 2, y - ds / 2, ds, ds); if (++cnt[k] >= CH) flush(k); continue; }
+        p.moveTo(x, y);
+        let q = d.vs[i];
+        for (let j = 1, n = d.nv[i]; j < n; j++, q++) { x += d.dx[q] * kx; y -= d.dy[q] * ky; p.lineTo(x, y); }
+        if (!isLine) p.closePath();
+        if (++cnt[k] >= CH) flush(k);
+      }
+      for (let k = 0; k < 5; k++) flush(k);
+    }
+  }
+}
+const packedLayers = [];
+function redrawPacked() { packedLayers.forEach(p => p.redraw()); }
+map.on('zoomstart', () => packedLayers.forEach(p => { p.c.style.visibility = 'hidden'; }));
+map.on('moveend zoomend resize', () => packedLayers.forEach(p => { p.c.style.visibility = ''; p.redraw(); }));
+
+/* ------------------------------------------------------------------ layers */
+const zoneCache = new Map();
+function zoneLayerFor(T) {
+  const z = D.zones.find(z => z.d === T) || D.zones.filter(z => z.d <= T).pop();
+  if (!z) return null;
+  if (!zoneCache.has(z.d)) zoneCache.set(z.d, L.geoJSON(z.geojson, { pane: 'zone', interactive: false, style: zoneStyle }));
+  return zoneCache.get(z.d);
+}
+const zoneStyle = () => ({ color: tok('--zone'), weight: 1.5, fillColor: tok('--zone'), fillOpacity: (document.documentElement.dataset.base === 'imagery' ? 0.2 : 0.12) * (state.op.zone ?? 1), opacity: Math.min(1, 0.9 * (state.op.zone ?? 1)) });
+
+const RING_STEP = 250;
+const ringGroup = L.layerGroup();
+D.zones.filter(z => z.d % RING_STEP === 0).forEach(z => {
+  L.geoJSON(z.geojson, { pane: 'rings', style: () => ({ color: tok('--zone'), weight: 1, dashArray: '4 5', fill: false, opacity: .55 * (state.op.rings ?? 1) }),
+    onEachFeature: (f, l) => l.bindTooltip(z.d + ' m from river', { sticky: true }) }).addTo(ringGroup);
+});
+
+const doColor = v => v == null ? tok('--river') : v < 2 ? tok('--do1') : v < 5 ? tok('--do2') : tok('--do3');
+const isDim = f => state.focus != null && f.properties.rcode !== state.focus;   /* river focus dims the others */
+const haloStyle = f => ({ color: tok('--halo'), weight: 6, opacity: .7 * (state.op.rivers ?? 1) * (isDim(f) ? .15 : 1) });
+const riverStyle = f => { const v = f.properties.do_mgl, dim = isDim(f);
+  return { color: doColor(v), weight: dim ? 1.6 : (v != null ? 3 : 2.2) + (state.focus != null ? 1.5 : 0), opacity: (state.op.rivers ?? 1) * (dim ? .3 : 1) }; };
+const riverHalo = L.geoJSON(D.lines, { pane: 'river', interactive: false, style: haloStyle });
+const rivers = L.geoJSON(D.lines, { pane: 'river',
+  style: riverStyle,
+  onEachFeature: (f, l) => { l.on('mouseover', () => l.setStyle({ weight: 4.5 })); l.on('mouseout', () => rivers.resetStyle(l));
+    l.bindTooltip(f.properties.name || 'waterway', { sticky: true }); } });
+const riverGroup = L.layerGroup([riverHalo, rivers]);
+function restyleRivers() { riverHalo.setStyle(haloStyle); rivers.setStyle(riverStyle); }
+const stationLayer = L.geoJSON(D.stations, { pane: 'pts', pointToLayer: (f, ll) => L.circleMarker(ll, { radius: 5, color: tok('--text'), weight: 1.5, fillColor: tok('--surface-solid'), fillOpacity: 1 }),
+  onEachFeature: (f, l) => l.bindTooltip('Station ' + f.properties.station) });
+
+const calLayers = D.contours.map(c => ({ c, layer: L.geoJSON(c.geojson, { pane: 'cal', interactive: false,
+  style: f => ({ color: c.color, weight: 2, fillOpacity: f.properties.kind === 'est' ? .12 : 0, dashArray: f.properties.kind === 'est' ? null : '5 4' }) }) }));
+
+let baseOverlay = null;
+if (BASE) baseOverlay = L.imageOverlay(baseUrl(), [[BASE.south, BASE.west], [BASE.north, BASE.east]], { pane: 'base', interactive: false });
+/* the joyplot lines turn into thick bars when zoomed in: fade the terrain so the exposure layers lead */
+function fadeBase() { if (!baseOverlay) return; const z = map.getZoom(); baseOverlay.setOpacity((state.op.base ?? 1) * Math.max(0.3, Math.min(1, 1 - (z - 12.5) * 0.28))); }
+map.on('zoomend', fadeBase);
+function baseUrl() { return 'basemap_' + document.documentElement.dataset.theme + '.png'; }
+
+/* ---- free basemaps (public tile servers, need internet) ---- */
+const isDark = () => document.documentElement.dataset.theme === 'dark';
+const BM = {
+  sat: { name: 'Satellite', tpl: () => 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', nz: 18,
+    attr: 'Imagery &copy; Esri, Maxar, Earthstar Geographics' },
+  map: { name: 'Map', nz: 19,
+    tpl: () => isDark() ? ['https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+                           'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}']
+                        : 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+    attr: 'Map &copy; Esri, HERE, Garmin, OpenStreetMap contributors' },
+  terrain: { name: 'Terrain', tpl: () => 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', nz: 17,
+    attr: '&copy; OpenStreetMap contributors, SRTM &middot; &copy; OpenTopoMap (CC-BY-SA)' },
+  none: { name: 'Blank', tpl: null, attr: '' }
+};
+let bmLayer = null;
+function toast(msg) {
+  const t = document.createElement('div'); t.className = 'toast surface'; t.setAttribute('role', 'status'); t.textContent = msg;
+  document.body.appendChild(t); setTimeout(() => t.remove(), 7000);
+}
+function watchTiles(l) {
+  let ok = 0, bad = 0, shown = false;
+  l.on('tileload', () => { ok++; });
+  l.on('tileerror', () => { bad++; if (!ok && bad >= 4 && !shown) { shown = true; toast('Basemap tiles did not load. Check your connection, or pick Blank under Map type.'); } });
+}
+function setBasemap(id) {
+  state.bm = id;
+  if (bmLayer) { map.removeLayer(bmLayer); bmLayer = null; }
+  const b = BM[id];
+  if (b.tpl) {
+    const urls = [].concat(b.tpl());
+    bmLayer = L.layerGroup(urls.map(u => L.tileLayer(u, { pane: 'tiles', maxNativeZoom: Math.min(b.nz, /Dark_Gray/.test(u) ? 16 : 99), maxZoom: 19, subdomains: b.sub || 'abc', crossOrigin: true }))).addTo(map);
+    watchTiles(bmLayer.getLayers()[0]);
+  }
+  document.documentElement.dataset.base = id === 'sat' ? 'imagery' : 'plain';
+  $('#attrib').innerHTML = ['Rivers, buildings, roads &copy; OpenStreetMap contributors', b.attr, 'Terrain: Copernicus GLO-30', 'Population: WorldPop 2020'].filter(Boolean).join(' &middot; ');
+  if (LAY.labels) LAY.labels.mount(LAY.labels.on);
+  $$('#bms .bm').forEach(x => x.setAttribute('aria-pressed', x.dataset.id === id));
+  if (map._loaded) { restyle(); writeHash(); }
+}
+function thumb(id) {
+  const b = BM[id]; if (!b.tpl) return '';
+  const z = 11, lat = 27.62 * Math.PI / 180, x = Math.floor((85.35 + 180) / 360 * 2 ** z), y = Math.floor((1 - Math.log(Math.tan(lat) + 1 / Math.cos(lat)) / Math.PI) / 2 * 2 ** z);
+  return [].concat(b.tpl())[0].replace('{s}', (b.sub || 'abc')[0]).replace('{z}', z).replace('{x}', x).replace('{y}', y).replace('{r}', '');
+}
+function renderBms() {
+  $('#bms').innerHTML = Object.keys(BM).map(id => `<button class="bm" data-id="${id}" aria-pressed="${state.bm === id}"><span class="th" style="${BM[id].tpl ? `background-image:url(${thumb(id)})` : 'background-image:repeating-linear-gradient(45deg,var(--surface-2) 0 6px,var(--border) 6px 7px)'}"></span>${BM[id].name}</button>`).join('');
+}
+$('#bms').addEventListener('click', e => { const b = e.target.closest('.bm'); if (b) setBasemap(b.dataset.id); });
+const labelLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', { pane: 'labels', maxNativeZoom: 18, maxZoom: 19, crossOrigin: true });
+
+/* ---- valley outline, valley contours, major roads ---- */
+const outlineHalo = V ? L.geoJSON(V.outline, { pane: 'outline', interactive: false }) : null;
+const outlineLine = V ? L.geoJSON(V.outline, { pane: 'outline', onEachFeature: (f, l) => l.bindTooltip(
+  `<b>Valley drainage basin</b><br>${f.properties.area_km2} km&sup2; &middot; floor ${f.properties.floor_m} m &middot; highest rim ${f.properties.rim_m} m`, { sticky: true }) }) : null;
+const outlineGroup = V ? L.layerGroup([outlineHalo, outlineLine]) : null;
+const contourRenderer = L.canvas({ pane: 'contour', padding: 0.3 });
+const contourLayer = V ? L.geoJSON(V.contours, { pane: 'contour', renderer: contourRenderer,
+  onEachFeature: (f, l) => l.bindTooltip(f.properties.elev + ' m', { sticky: true }) }) : null;
+const MR_NAMES = ['Motorway', 'Trunk road', 'Primary road', 'Secondary road', 'Tertiary road'];
+const mrRenderer = L.canvas({ pane: 'mroad', padding: 0.3 });
+const mrW = f => { const z = map.getZoom(), k = Math.max(0.7, Math.min(2.3, (z - 9) * 0.3)); return [3.4, 3.2, 2.8, 2.1, 1.7][f.properties.c] * k * (f.properties.l ? 0.7 : 1); };
+const mrCase = MR ? L.geoJSON(MR, { pane: 'mroad', renderer: mrRenderer, interactive: false }) : null;
+const mrFill = MR ? L.geoJSON(MR, { pane: 'mroad', renderer: mrRenderer,
+  onEachFeature: (f, l) => l.bindTooltip((f.properties.n ? f.properties.n + ' &middot; ' : '') + MR_NAMES[f.properties.c] + (f.properties.l ? ' (link)' : ''), { sticky: true }) }) : null;
+const mrGroup = MR ? L.layerGroup([mrCase, mrFill]) : null;
+function styleVector() {
+  const o = k => state.op[k] ?? 1;
+  if (outlineHalo) { outlineHalo.setStyle({ color: tok('--halo'), weight: 6, opacity: .6 * o('outline'), fill: false }); outlineLine.setStyle({ color: tok('--outline'), weight: 2.6, opacity: o('outline'), fill: false }); }
+  if (contourLayer) contourLayer.setStyle(f => ({ color: f.properties.index ? tok('--contour-i') : tok('--contour'), weight: f.properties.index ? 1.4 : .8, opacity: o('contours') }));
+  if (mrCase) {
+    mrCase.setStyle(f => ({ color: tok('--mr-casing'), weight: mrW(f) + 2.2, opacity: o('mroad'), lineCap: 'round', lineJoin: 'round' }));
+    mrFill.setStyle(f => ({ color: f.properties.c <= 2 ? tok('--mr-1') : tok('--mr-2'), weight: mrW(f), opacity: o('mroad'), lineCap: 'round', lineJoin: 'round' }));
+  }
+}
+map.on('zoomend', () => { if (mrCase) styleVector(); });
+
+const bldPk = PK.bld ? new Packed('bld', decode(PK.bld), 'poly') : null;
+const roadPk = PK.road ? new Packed('road', decode(PK.road), 'line') : null;
+if (bldPk) packedLayers.push(bldPk);
+if (roadPk) packedLayers.push(roadPk);
+
+const hotLayer = L.layerGroup();
+const rampHTML ='<span class="ramp"><i style="background:var(--e1)"></i><i style="background:var(--e2)"></i><i style="background:var(--e3)"></i><i style="background:var(--e4)"></i></span>';
+const LAYERS = [
+  { id: 'cal', name: 'Fitted odour reach', group: 'Exposure', avail: calLayers.length > 0, swatch: 'var(--zone)',
+    why: 'Needs field observations run through calibrate.', mount: on => calLayers.forEach(x => on ? x.layer.addTo(map) : map.removeLayer(x.layer)),
+    setOp: o => calLayers.forEach(x => x.layer.setStyle(f => ({ opacity: o, fillOpacity: (f.properties.kind === 'est' ? .12 : 0) * o }))),
+    legend: () => D.contours.map(c => `<span class="legend"><i class="sw" style="background:${c.color}"></i>${c.name}</span>`).join('') },
+  { id: 'zone', name: 'Exposure zone', group: 'Exposure', avail: D.zones.length > 0, swatch: 'var(--zone)',
+    mount: on => { LAY.zone.on = on; updateZone(); }, setOp: o => { state.op.zone = o; updateZone(); },
+    legend: () => '<span class="legend">Shaded = within the chosen distance of a river</span>' },
+  { id: 'bld', name: 'Buildings (OSM footprints)', group: 'Exposure', avail: !!bldPk, swatch: 'var(--e2)', why: 'Not in this build (run without --no-buildings).',
+    mount: on => bldPk.setVisible(on), setOp: o => bldPk.setOpacity(o), packed: bldPk,
+    legend: () => `<span class="legend">near ${rampHTML} far &middot; grey = outside</span>` },
+  { id: 'road', name: 'Roads', group: 'Exposure', avail: !!roadPk, swatch: 'var(--e3)', why: 'Not in this build (run without --no-roads).',
+    mount: on => roadPk.setVisible(on), setOp: o => roadPk.setOpacity(o), packed: roadPk,
+    legend: () => `<span class="legend">near ${rampHTML} far &middot; grey = outside</span>` },
+  { id: 'hot', name: 'Hotspots', group: 'Exposure', avail: !!HS, swatch: 'var(--hot)', why: 'No hotspot data in this build.',
+    mount: on => { if (on) hotLayer.addTo(map); else map.removeLayer(hotLayer); drawHotLayer(); },
+    setOp: o => { state.op.hot = o; drawHotLayer(); },
+    legend: () => '<span class="legend"><i class="sw" style="background:var(--hot);opacity:.5"></i>strong &nbsp;<i class="sw" style="background:var(--hot);opacity:.22"></i>clustered. Many exposed buildings together (200 m squares), not a measure of smell.</span>' },
+  { id: 'rings', name: 'Distance contours (250 m)', group: 'Exposure', avail: true, swatch: 'var(--zone)',
+    mount: on => (on && state.focus == null) ? ringGroup.addTo(map) : map.removeLayer(ringGroup),
+    setOp: o => { state.op.rings = o; ringGroup.eachLayer(g => g.setStyle({ opacity: .55 * o })); } },
+  { id: 'rivers', name: 'Rivers (OSM)', group: 'Hydrology', avail: true, swatch: 'var(--river)',
+    mount: on => on ? riverGroup.addTo(map) : map.removeLayer(riverGroup),
+    setOp: o => { state.op.rivers = o; restyleRivers(); },
+    legend: () => '<span class="legend"><i class="sw" style="background:var(--river)"></i>no measurement &nbsp;<i class="sw" style="background:var(--do1)"></i>DO&lt;2 <i class="sw" style="background:var(--do2)"></i>2&ndash;5 <i class="sw" style="background:var(--do3)"></i>&ge;5 mg/L</span>' },
+  { id: 'stations', name: 'Water-quality stations', group: 'Hydrology', avail: D.stations.features.length > 0, swatch: 'var(--text-2)', why: 'No stations.csv supplied.',
+    mount: on => on ? stationLayer.addTo(map) : map.removeLayer(stationLayer), setOp: o => stationLayer.setStyle({ opacity: o, fillOpacity: o }) },
+  { id: 'outline', name: 'Valley outline', group: 'Valley and roads', avail: !!outlineGroup, swatch: 'var(--outline)', why: 'data_valley.js not found (run odour_valley.py).',
+    mount: on => on ? outlineGroup.addTo(map) : map.removeLayer(outlineGroup), setOp: o => { state.op.outline = o; styleVector(); },
+    legend: () => V ? `<span class="legend">Drainage basin of the valley floor, ${V.area_km2} km&sup2;. Found by a watershed on the DEM, not an administrative boundary.</span>` : '' },
+  { id: 'contours', name: 'Valley contours', group: 'Valley and roads', avail: !!contourLayer, swatch: 'var(--text-2)', why: 'data_valley.js not found (run odour_valley.py).',
+    mount: on => on ? contourLayer.addTo(map) : map.removeLayer(contourLayer), setOp: o => { state.op.contours = o; styleVector(); },
+    legend: () => V ? `<span class="legend">Every ${V.interval} m, heavier every 500 m. Valley floor is about ${V.floor_m} m. Hover a line for its height.</span>` : '' },
+  { id: 'mroad', name: 'Major roads', group: 'Valley and roads', avail: !!mrGroup, swatch: '#d97706', why: 'data_mroads.js not found (run odour_roads_major.py).',
+    mount: on => on ? mrGroup.addTo(map) : map.removeLayer(mrGroup), setOp: o => { state.op.mroad = o; styleVector(); },
+    legend: () => '<span class="legend"><i class="sw" style="background:var(--mr-1)"></i>motorway&ndash;primary &nbsp;<i class="sw" style="background:var(--mr-2)"></i>secondary&ndash;tertiary</span>' },
+  { id: 'labels', name: 'Place labels', group: 'Overlays', avail: true, swatch: 'var(--text-2)', fixedZ: true,
+    mount: on => { if (on && (state.bm === 'sat' || state.bm === 'none')) labelLayer.addTo(map); else map.removeLayer(labelLayer); },
+    setOp: o => labelLayer.setOpacity(o), legend: () => '<span class="legend">Shown over Satellite and Blank. The other map types carry their own labels.</span>' },
+  { id: 'base', name: 'Terrain joyplot', group: 'Overlays', avail: !!baseOverlay, swatch: 'var(--text-3)', why: 'basemap_*.png not found (run the R script).',
+    mount: on => on ? baseOverlay.addTo(map) : map.removeLayer(baseOverlay), setOp: o => { state.op.base = o; fadeBase(); },
+    legend: () => '<span class="legend">Ridge-line drawing of Copernicus GLO-30 elevation, for use over Blank or Map.</span>' }
+];
+const LAY = {}; LAYERS.forEach(l => { LAY[l.id] = l; l.on = false; state.op[l.id] = 1; });
+/* top of the list = top of the stack */
+state.order = ['stations', 'cal', 'rivers', 'bld', 'road', 'hot', 'rings', 'zone', 'mroad', 'outline', 'contours', 'labels', 'base'];
+
+function updateZone() {
+  const z = LAY.zone;
+  if (z.cur) { map.removeLayer(z.cur); z.cur = null; }
+  if (z.on && state.focus == null) { const lay = zoneLayerFor(state.T); if (lay) { lay.setStyle(zoneStyle()); lay.addTo(map); z.cur = lay; } }
+}
+function applyZ() { state.order.forEach((id, i) => { const l = LAY[id]; if (l.fixedZ) return; const z = 200 + (state.order.length - i) * 10; (l.panes || []).forEach(p => { paneZ[p].style.zIndex = z; }); }); }
+LAY.hot.panes = ['hot']; LAY.cal.panes = ['cal']; LAY.zone.panes = ['zone']; LAY.bld.panes = ['bld']; LAY.road.panes = ['road']; LAY.rings.panes = ['rings']; LAY.rivers.panes = ['river']; LAY.stations.panes = ['pts'];
+LAY.base.panes = ['base']; LAY.outline.panes = ['outline']; LAY.contours.panes = ['contour']; LAY.mroad.panes = ['mroad'];
+function setVisible(id, on) {
+  const l = LAY[id]; if (!l.avail) return;
+  l.on = on; l.mount(on);
+  if (on) state.hidden.delete(id); else state.hidden.add(id);
+  const cb = $(`.lrow[data-id="${id}"] .cb`); if (cb) cb.checked = on;
+  const qc = $(`.qchip[data-id="${id}"]`); if (qc) qc.setAttribute('aria-pressed', on);
+  writeHash();
+}
+/* move within the same group only, so the visible row always moves */
+function moveLayer(id, dir) {
+  const g = LAY[id].group, same = state.order.filter(x => LAY[x].group === g && !LAY[x].fixedZ);
+  const a = same.indexOf(id), b = same[a + dir]; if (b === undefined) return;
+  const i = state.order.indexOf(id), j = state.order.indexOf(b);
+  [state.order[i], state.order[j]] = [state.order[j], state.order[i]];
+  applyZ(); renderLayers();
+}
+function renderLayers() {
+  const host = $('#layerList'); const open = new Set($$('.lrow.open', host).map(r => r.dataset.id));
+  host.innerHTML = '';
+  ['Exposure', 'Valley and roads', 'Hydrology', 'Overlays'].forEach(g => {
+    const ids = state.order.filter(id => LAY[id].group === g); if (!ids.some(id => LAY[id].avail)) return;
+    host.insertAdjacentHTML('beforeend', `<div class="group-title"><span class="mono-label">${g}</span></div>`);
+    ids.filter(id => LAY[id].avail).forEach(id => {   /* layers with no data in this build are left out, not greyed */
+      const l = LAY[id];
+      const row = document.createElement('div'); row.className = 'lrow' + (l.avail ? '' : ' dis') + (open.has(id) ? ' open' : ''); row.dataset.id = id;
+      row.innerHTML = `<div class="lhead">
+        <label class="lname"><input type="checkbox" class="cb" style="--c:${l.swatch}" ${l.on ? 'checked' : ''} ${l.avail ? '' : 'disabled'} aria-label="${l.name}"><span>${l.name}</span></label>
+        <button class="mini more" aria-label="Options for ${l.name}" aria-expanded="${open.has(id)}">${ICON.down}</button></div>
+        <div class="lbody">${l.avail ? `<div class="oprow">Opacity <span class="seg" role="group" aria-label="${l.name} opacity">${[25, 50, 75, 100].map(v => `<button data-op="${v / 100}" aria-pressed="${Math.abs(state.op[id] - v / 100) < .01}">${v}%</button>`).join('')}</span></div>
+        ${l.packed ? `<label>Draw <span class="seg" style="margin-left:auto"><button data-m="all" aria-pressed="${!l.packed.exposedOnly}">All</button><button data-m="exp" aria-pressed="${l.packed.exposedOnly}">Exposed only</button></span></label>` : ''}
+        ${l.legend ? l.legend() : ''}
+        ${l.fixedZ ? '' : `<div class="ord">Stack order <button class="mini up" aria-label="Move ${l.name} up">${ICON.up}</button><button class="mini dn" aria-label="Move ${l.name} down">${ICON.down}</button></div>`}` : `<p class="note" style="margin:8px 0 0">${l.why || 'Unavailable'}</p>`}</div>`;
+      host.appendChild(row);
+    });
+  });
+}
+$('#layerList').addEventListener('change', e => { const cb = e.target.closest('.cb'); if (cb) setVisible(cb.closest('.lrow').dataset.id, cb.checked); });
+$('#layerList').addEventListener('click', e => {
+  const row = e.target.closest('.lrow'); if (!row) return; const id = row.dataset.id, l = LAY[id];
+  if (e.target.closest('[data-op]')) { const b = e.target.closest('[data-op]'), o = +b.dataset.op; state.op[id] = o; LAY[id].setOp(o);
+    $$('[data-op]', row).forEach(x => x.setAttribute('aria-pressed', x === b)); }
+  else if (e.target.closest('.more')) { row.classList.toggle('open'); $('.more', row).setAttribute('aria-expanded', row.classList.contains('open')); }
+  else if (e.target.closest('.up')) moveLayer(id, -1);
+  else if (e.target.closest('.dn')) moveLayer(id, 1);
+  else if (e.target.closest('[data-m]')) { l.packed.exposedOnly = e.target.closest('[data-m]').dataset.m === 'exp'; $$('[data-m]', row).forEach(b => b.setAttribute('aria-pressed', b.dataset.m === (l.packed.exposedOnly ? 'exp' : 'all'))); l.packed.redraw(); }
+});
+
+/* ---- one-tap layer toggles (phone): same state as the Layers sheet ---- */
+const QUICK = [['zone', 'Zone'], ['hot', 'Hotspots'], ['bld', 'Buildings'], ['road', 'Roads'], ['mroad', 'Major roads'], ['outline', 'Valley'], ['contours', 'Contours'], ['rivers', 'Rivers'], ['labels', 'Labels']];
+function renderQuick() {
+  $('#quick').innerHTML = (state.focus != null ? `<button class="qchip" data-clear aria-pressed="true" aria-label="Show all rivers again"><i class="sw" style="background:var(--accent)"></i>${esc(focusName())} only &times;</button>` : '')
+    + QUICK.filter(([id]) => LAY[id] && LAY[id].avail).map(([id, n]) =>
+    `<button class="qchip" data-id="${id}" aria-pressed="${LAY[id].on}"><i class="sw" style="background:${LAY[id].swatch}"></i>${n}</button>`).join('');
+}
+$('#quick').addEventListener('click', e => { const b = e.target.closest('.qchip'); if (!b) return;
+  if (b.hasAttribute('data-clear')) setFocus(null); else setVisible(b.dataset.id, !LAY[b.dataset.id].on); });
+
+/* ---- by river: look at one river on its own (every river is otherwise given the same distance rule) ---- */
+function renderRivers() {
+  const sec = $('#riverSec'); if (!D.rivers.length) { sec.hidden = true; return; }
+  const k = Math.round(state.T / 50) - 1;
+  const rows = D.rivers.map((r, c) => ({ c, r, b: k >= 0 ? r.b[k] : 0, p: k >= 0 && r.p ? r.p[k] : 0 }));
+  const mx = Math.max(1, ...rows.map(x => x.b));
+  rows.sort((a, b) => b.b - a.b);
+  const fit = r => { const f = (D.reach || []).find(x => x.scenario.startsWith('river=' + r.key) && x.p === 0.5 && x.dist_m != null && isFinite(x.dist_m)); return f ? ` &middot; fitted reach ${Math.round(f.dist_m)} m${f.dist_m > D.max_dist ? ' (beyond the ' + D.max_dist + ' m shown)' : ''}` : ''; };
+  $('#riverList').innerHTML = (state.focus != null ? '<button class="btn rvclear" data-clear>Show all rivers</button>' : '') + rows.map(x =>
+    `<button class="rv" data-c="${x.c}" aria-pressed="${state.focus === x.c}"><span class="rvn">${esc(x.r.name)}</span><span class="rvv">${fmt(x.b)}</span>
+     <span class="rvbar"><i style="width:${x.b / mx * 100}%"></i></span>
+     <span class="rvs">buildings within ${state.T} m &middot; ${fmt(x.r.len_km > 0 ? x.b / x.r.len_km : 0)} per km of river${x.p ? ' &middot; ~' + fmt(x.p) + ' people' : ''}${fit(x.r)}</span></button>`).join('');
+  $('#reachNotes').innerHTML = D.reach_notes.length ? '<b>Per-river fit:</b> ' + D.reach_notes.map(esc).join('; ') : '';
+}
+function setFocus(c, fitView = true) {
+  state.focus = (c == null || state.focus === c) ? null : c;
+  const sel = state.focus == null ? null : new Set([state.focus]);
+  if (bldPk) bldPk.riverSel = sel; if (roadPk) roadPk.riverSel = sel;
+  LAY.zone.mount(LAY.zone.on); LAY.rings.mount(LAY.rings.on);      /* the all-river buffers do not apply to one river */
+  restyleRivers(); renderStats(); renderDock(); drawChart(); renderRivers(); renderHot(); renderQuick(); redrawPacked(); writeHash();
+  if (state.focus != null && fitView) {
+    const b = L.latLngBounds([]); rivers.eachLayer(l => { if (l.feature.properties.rcode === state.focus) b.extend(l.getBounds()); });
+    if (b.isValid()) { const p = panelInsets(); map.fitBounds(b, { paddingTopLeft: p.tl, paddingBottomRight: p.br, maxZoom: 15, animate: false }); }
+    if (innerWidth < 768) { curPanel = null; setPanel(null); }
+  }
+}
+$('#riverList').addEventListener('click', e => { const b = e.target.closest('.rv'); if (b) setFocus(+b.dataset.c); else if (e.target.closest('[data-clear]')) setFocus(null); });
+
+/* ---- hotspots: clustered exposure (see odour_hotspots.py) ---- */
+let hot = null, hotRank = 'b', nameTimer = 0; const hotNames = new Map();
+const riverName = c => (D.rivers[c] || {}).name || '';
+function computeHot() {
+  if (!HS) return null;
+  const k = Math.round(state.T / HS.T[0]) - 1, tot = rowAt(state.T);
+  const out = { cells: new Map(), clusters: [], strong: { b: 0, p: 0 }, clustered: { b: 0, p: 0 }, tot: { b: tot[2], p: tot[1] } };
+  if (k < 0 || k >= HS.T.length) return out;
+  for (const c of HS.cells) {
+    const z = c[7][k] / 10, b = c[5][k];
+    if (z >= 2.58 && b > 0 && (state.focus == null || c[4] === state.focus)) {
+      out.cells.set(c[0] * 100000 + c[1], { i: c[0], j: c[1], lon: c[2], lat: c[3], dom: c[4], b, p: c[6][k], z });
+      out.clustered.b += b; out.clustered.p += c[6][k]; if (z >= 3.29) { out.strong.b += b; out.strong.p += c[6][k]; }
+    }
+  }
+  const seen = new Set(), hm = HS.cell_m / 2;
+  for (const [key, c0] of out.cells) {
+    if (c0.z < 3.29 || seen.has(key)) continue;
+    const stack = [key], mem = []; seen.add(key);
+    while (stack.length) {
+      const c = out.cells.get(stack.pop()); mem.push(c);
+      for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) {
+        const nk = (c.i + di) * 100000 + (c.j + dj), n = out.cells.get(nk);
+        if (n && n.z >= 3.29 && !seen.has(nk)) { seen.add(nk); stack.push(nk); }
+      }
+    }
+    let b = 0, p = 0, la = 0, lo = 0, zmax = 0; const dom = {}, bb = L.latLngBounds([]);
+    mem.forEach(c => { b += c.b; p += c.p; la += c.lat * c.b; lo += c.lon * c.b; zmax = Math.max(zmax, c.z); dom[c.dom] = (dom[c.dom] || 0) + c.b;
+      const dl = hm / 110574, dn = hm / (111320 * Math.cos(c.lat * Math.PI / 180)); bb.extend([c.lat - dl, c.lon - dn]); bb.extend([c.lat + dl, c.lon + dn]); });
+    const area = mem.length * HS.cell_m * HS.cell_m / 1e4, lat = la / b, lon = lo / b;
+    out.clusters.push({ key: lat.toFixed(3) + ',' + lon.toFixed(3), n: mem.length, b, p, zmax, lat, lon, area, dens: b / area, bounds: bb,
+      dom: +Object.keys(dom).sort((x, y) => dom[y] - dom[x])[0] });
+  }
+  out.clusters.sort((a, b) => b[hotRank] - a[hotRank]);
+  return out;
+}
+function drawHotLayer() {
+  hotLayer.clearLayers();
+  if (!LAY.hot || !LAY.hot.on || !hot) return;
+  const o = state.op.hot ?? 1, col = tok('--hot'), hm = HS.cell_m / 2, dl = hm / 110574;
+  for (const c of hot.cells.values()) {
+    const dn = hm / (111320 * Math.cos(c.lat * Math.PI / 180));
+    L.rectangle([[c.lat - dl, c.lon - dn], [c.lat + dl, c.lon + dn]], { pane: 'hot', weight: 0, fillColor: col, fillOpacity: (c.z >= 3.29 ? .5 : .22) * o, interactive: false }).addTo(hotLayer);
+  }
+  hot.clusters.slice(0, 8).forEach((cl, i) => L.marker([cl.lat, cl.lon], { pane: 'pts', interactive: false, icon: L.divIcon({ className: 'hotnum', html: `<b>${i + 1}</b>`, iconSize: [24, 24] }) }).addTo(hotLayer));
+}
+function renderHotPanel() {
+  if (!HS || !hot) { $('#hsSummary').textContent = HS ? '' : 'Hotspot data is not in this build (run the main script with buildings).'; $('#hsList').innerHTML = ''; return; }
+  const T = state.T, scope = state.focus == null ? 'any mapped river' : focusName(), pct = (a, b) => b ? Math.round(a / b * 100) : 0, n = hot.clusters.length;
+  if (!n) { $('#hsSummary').innerHTML = `No strong hotspot at <b>${T} m</b> from ${esc(scope)}. Try a larger distance.`; $('#hsList').innerHTML = ''; return; }
+  $('#hsSummary').innerHTML = `At <b>${T} m</b> from ${esc(scope)}: <b>${n}</b> strong hotspot area${n === 1 ? '' : 's'} hold <b>${fmt(hot.strong.b)}</b> buildings (${pct(hot.strong.b, hot.tot.b)}% of the ${fmt(hot.tot.b)} exposed) and about <b>${fmt(hot.strong.p)}</b> people by WorldPop. With the weaker clustered squares: ${fmt(hot.clustered.b)} buildings (${pct(hot.clustered.b, hot.tot.b)}%), about ${fmt(hot.clustered.p)} people.`;
+  $('#hsList').innerHTML = hot.clusters.slice(0, 10).map((c, i) =>
+    `<button class="hs" data-k="${c.key}"><span class="rk">${i + 1}</span><span class="hsn">${esc(hotNames.get(c.key) || c.lat.toFixed(4) + ', ' + c.lon.toFixed(4))}<small>${esc(riverName(c.dom))} &middot; ${fmt(c.area)} ha &middot; ${fmt(c.dens)} buildings/ha</small></span><span class="hsv"><b>${fmt(c.b)}</b> buildings<br>~${fmt(c.p)} people</span></button>`).join('');
+}
+function renderHot() { hot = computeHot(); drawHotLayer(); renderHotPanel(); scheduleNames(); }
+function scheduleNames() { clearTimeout(nameTimer); if (HS && curPanel === 'hotspots') nameTimer = setTimeout(nameClusters, 700); }
+async function nameClusters() {            /* place names for the top rows: the hotspot centre goes to Nominatim (max 1 request a second) */
+  for (const c of (hot ? hot.clusters : []).slice(0, 10)) {
+    if (hotNames.has(c.key)) continue; hotNames.set(c.key, '');
+    try { const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=16&accept-language=en&lat=${c.lat.toFixed(5)}&lon=${c.lon.toFixed(5)}`);
+      if (r.ok) { const j = await r.json(), a = j.address || {};
+        hotNames.set(c.key, a.suburb || a.neighbourhood || a.quarter || a.city_district || a.road || j.name || ''); renderHotPanel(); } } catch (e) { /* offline or blocked: coordinates stay */ }
+    await new Promise(r => setTimeout(r, 1100));
+  }
+}
+$('#hsList').addEventListener('click', e => {
+  const b = e.target.closest('.hs'); if (!b || !hot) return; const c = hot.clusters.find(x => x.key === b.dataset.k); if (!c) return;
+  if (LAY.hot.avail && !LAY.hot.on) setVisible('hot', true);
+  if (innerWidth < 768) { curPanel = null; setPanel(null); }
+  const p = panelInsets(); map.fitBounds(c.bounds.pad(0.6), { paddingTopLeft: p.tl, paddingBottomRight: p.br, maxZoom: 17, animate: false });
+});
+$('#hsRank').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; hotRank = b.dataset.k;
+  $$('#hsRank button').forEach(x => x.setAttribute('aria-pressed', x === b)); renderHot(); });
+
+/* ------------------------------------------------------------------ exposure numbers */
+const SERIES = [
+  { k: 'bld', label: 'Buildings', idx: 2, ok: D.has_bld, f: v => fmt(v), unit: 'buildings' },
+  { k: 'road', label: 'Road km', idx: 4, ok: D.has_roads, f: v => (v / 1000).toFixed(1), unit: 'km of road', scale: 1 / 1000 },
+  { k: 'fp', label: 'Footprint ha', idx: 3, ok: D.has_bld, f: v => fmt(v / 1e4), unit: 'ha of footprint', scale: 1e-4 },
+  { k: 'pop', label: 'People', idx: 1, ok: D.has_pop, f: v => fmt(v), unit: 'people (WorldPop)' }
+].filter(s => s.ok);
+let ser = SERIES[0] || null;
+/* exposure rows [dist, people, buildings, footprint m2, road m]; for a focused river, that river's own rows */
+const TG = []; for (let t = 50; t <= D.max_dist + 1e-9; t += 50) TG.push(t);
+const riverRows = {};
+function curRows() {
+  const c = state.focus, R = c == null ? null : D.rivers[c];
+  if (!R) return D.curve;
+  return riverRows[c] || (riverRows[c] = [[0, 0, 0, 0, 0]].concat(TG.map((t, i) => [t, R.p ? R.p[i] : 0, R.b[i], R.fp[i], R.r ? R.r[i] : 0])));
+}
+function rowAt(T) { const rows = curRows(); let r = rows[0]; for (const x of rows) { if (x[0] <= T) r = x; else break; } return r; }
+const lastRow = () => { const rows = curRows(); return rows[rows.length - 1]; };
+const focusName = () => state.focus == null ? '' : (D.rivers[state.focus] || {}).name || '';
+
+function renderStats() {
+  const r = rowAt(state.T);
+  const card = (label, idx, f, unit, extra) => `<div class="card"><div class="u">${label}</div><div class="v">${f(r[idx])}</div><div class="s">${extra || ''}</div></div>`;
+  const last = lastRow();
+  const share = idx => last[idx] ? Math.round(r[idx] / last[idx] * 100) + '% of the ' + D.max_dist + ' m corridor' + (state.focus != null ? ' of this river' : '') : '';
+  let html = '';
+  if (D.has_bld) html += card('Buildings', 2, fmt, '', share(2));
+  if (D.has_roads) html += card('Road length (km)', 4, v => (v / 1000).toFixed(1), '', share(4));
+  if (D.has_bld) html += card('Footprint (ha)', 3, v => fmt(v / 1e4), '', share(3));
+  if (D.has_pop) html += card('People (WorldPop)', 1, fmt, '', share(1));
+  $('#cards').innerHTML = html || '<p class="note">No building, road or population data in this build.</p>';
+  const kpi = (label, idx, f) => `<div class="kpi surface"><div class="l">${label}</div><div class="v">${f(r[idx])}</div><div class="s">within ${state.T} m${state.focus != null ? ' of ' + esc(focusName()) : ''}</div></div>`;
+  $('#kpis').innerHTML = (D.has_bld ? kpi('Buildings', 2, fmt) : '') + (D.has_roads ? kpi('Road km', 4, v => (v / 1000).toFixed(1)) : '')
+    + (D.has_bld ? kpi('Footprint ha', 3, v => fmt(v / 1e4)) : '') + (D.has_pop ? kpi('People (WorldPop)', 1, fmt) : '');
+  const ppb = D.has_pop && D.has_bld && r[2] > 0 ? r[1] / r[2] : 0;
+  $('#popWarn').innerHTML = ppb > 8 ? `<div class="warn"><span>&#9888;</span><span><b>Population looks inflated.</b> The raster implies about ${ppb.toFixed(0)} people per OSM building here. Treat the building count as the safer exposure measure.</span></div>` : '';
+}
+function renderDock() {
+  if (!ser) { $('#dockV').textContent = '-'; return; }
+  const r = rowAt(state.T);
+  $('#dockV').textContent = ser.f(r[ser.idx]);
+  $('#dockU').textContent = ser.unit + ' within ' + state.T + ' m' + (state.focus != null ? ' of ' + focusName() : '');
+}
+
+function setT(T, opts = {}) {
+  T = Math.max(0, Math.min(D.max_dist, Math.round(T / D.zone_step) * D.zone_step));
+  state.T = T;
+  $('#tv').textContent = T; $('#dminus').disabled = T <= 0; $('#dplus').disabled = T >= D.max_dist;
+  $$('#chips .chip').forEach(c => c.setAttribute('aria-pressed', +c.dataset.d === T));
+  updateZone(); redrawPacked(); renderStats(); renderRivers(); renderHot(); renderDock(); drawChart(); writeHash();
+  if (typeof refreshCheck === 'function') refreshCheck();
+}
+$('#dminus').addEventListener('click', () => setT(state.T - D.zone_step));
+$('#dplus').addEventListener('click', () => setT(state.T + D.zone_step));
+
+(function chips() {
+  const host = $('#chips');
+  [100, 250, 500, 1000].filter(d => d <= D.max_dist).forEach(d => host.insertAdjacentHTML('beforeend', `<button class="chip" data-d="${d}" aria-pressed="false">${d} m</button>`));
+  (D.reach || []).filter(r => r.dist_m != null && isFinite(r.dist_m) && r.dist_m <= D.max_dist && r.dist_m >= D.zone_step && !r.scenario.startsWith('river=')).slice(0, 6).forEach(r => {
+    host.insertAdjacentHTML('beforeend', `<button class="chip cal" data-d="${Math.max(D.zone_step, Math.round(r.dist_m / D.zone_step) * D.zone_step)}" aria-pressed="false" title="Fitted from field observations: ${r.scenario}">P=${r.p} ${r.scenario === 'all' ? '' : '[' + r.scenario + ']'} ${Math.round(r.dist_m)} m</button>`);
+  });
+  host.addEventListener('click', e => { const c = e.target.closest('.chip'); if (c) setT(+c.dataset.d); });
+  $('#reachNote').innerHTML = (D.reach && D.reach.length)
+    ? 'Dashed chips are distances <b>fitted from your field observations</b> (rounded to the slider step).'
+    : '<b>No odour reach measured yet.</b> This distance is your choice, not a finding. Fit one from field observations with <code>calibrate</code>.';
+})();
+
+/* ------------------------------------------------------------------ chart (also a scrubber) */
+const chartEl = $('#chart');
+function drawChart() {
+  if (!ser || $('#dock').classList.contains('collapsed')) return;
+  const w = chartEl.clientWidth, h = chartEl.clientHeight; if (w < 40 || h < 30) return;
+  const m = { l: 46, r: 14, t: 8, b: 20 }, iw = w - m.l - m.r, ih = h - m.t - m.b;
+  const rows = curRows(), last = rows[rows.length - 1];
+  const sc = ser.scale || 1, ymax = (last[ser.idx] * sc) || 1;
+  const X = d => m.l + d / D.max_dist * iw, Y = v => m.t + ih - (v * sc) / ymax * ih;
+  const pts = rows.map(r => X(r[0]).toFixed(1) + ',' + Y(r[ser.idx]).toFixed(1));
+  const T = state.T, tx = X(T), ty = Y(rowAt(T)[ser.idx]);
+  const ticks = [0, .25, .5, .75, 1].map(f => f * D.max_dist);
+  const yt = [0, .5, 1].map(f => f * ymax);
+  const nf = v => v === 0 ? '0' : v >= 1000 ? (v / 1000).toFixed(v >= 10000 ? 0 : 1) + 'k' : (v >= 10 ? Math.round(v) : v.toFixed(1));
+  const accent = tok('--accent');
+  const reach = (D.reach || []).filter(r => r.dist_m != null && isFinite(r.dist_m) && r.dist_m <= D.max_dist);
+  chartEl.innerHTML = `<svg viewBox="0 0 ${w} ${h}" role="img">
+    ${yt.map(v => `<line class="ax" x1="${m.l}" x2="${w - m.r}" y1="${Y(v / sc)}" y2="${Y(v / sc)}"/><text class="axt" x="${m.l - 6}" y="${Y(v / sc) + 3}" text-anchor="end">${nf(v)}</text>`).join('')}
+    ${ticks.map(t => `<text class="axt" x="${X(t)}" y="${h - 5}" text-anchor="${t === 0 ? 'start' : t === D.max_dist ? 'end' : 'middle'}">${t} m</text>`).join('')}
+    <polyline points="${X(0)},${Y(0)} ${pts.join(' ')} ${X(D.max_dist)},${Y(0)}" fill="${accent}" fill-opacity=".10" stroke="none"/>
+    <polyline points="${pts.join(' ')}" fill="none" stroke="${accent}" stroke-width="1.8"/>
+    ${reach.map(r => `<line x1="${X(r.dist_m)}" x2="${X(r.dist_m)}" y1="${m.t}" y2="${m.t + ih}" stroke="${tok('--zone')}" stroke-dasharray="3 3" opacity=".7"/>`).join('')}
+    <line x1="${tx}" x2="${tx}" y1="${m.t}" y2="${m.t + ih}" stroke="${tok('--text')}" stroke-opacity=".5"/>
+    <circle cx="${tx}" cy="${ty}" r="4.5" fill="${accent}" stroke="${tok('--surface-solid')}" stroke-width="2"/></svg>`;
+}
+function scrub(e) { const r = chartEl.getBoundingClientRect(); const x = (e.clientX - r.left - 46) / (r.width - 60); setT(x * D.max_dist); }
+chartEl.addEventListener('pointerdown', e => { chartEl.setPointerCapture(e.pointerId); scrub(e); chartEl.onpointermove = scrub; });
+chartEl.addEventListener('pointerup', () => { chartEl.onpointermove = null; });
+(function seg() {
+  const host = $('#serSeg');
+  host.innerHTML = SERIES.map(s => `<button data-k="${s.k}" aria-pressed="${s === ser}">${s.label}</button>`).join('');
+  host.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; ser = SERIES.find(s => s.k === b.dataset.k);
+    $$('button', host).forEach(x => x.setAttribute('aria-pressed', x === b)); renderDock(); drawChart(); });
+  if (SERIES.length < 2) host.style.display = 'none';
+})();
+new ResizeObserver(drawChart).observe(chartEl);
+function setDock(collapsed) {
+  $('#dock').classList.toggle('collapsed', collapsed);
+  $('#dockIcon').innerHTML = collapsed ? '<path d="m6 15 6-6 6 6"/>' : '<path d="m6 9 6 6 6-6"/>';
+  $('#dockToggle').setAttribute('aria-label', collapsed ? 'Expand chart' : 'Collapse chart');
+  setTimeout(() => { drawChart(); map.invalidateSize(); }, 230);
+}
+/* phone: the dock is a summary pill; tapping it opens the Exposure sheet */
+$('#dock').addEventListener('click', e => { if (innerWidth < 768 && !e.target.closest('#dockToggle')) { curPanel = 'exposure'; setPanel('exposure'); } });
+$('#dockToggle').addEventListener('click', () => setDock(!$('#dock').classList.contains('collapsed')));
+
+/* ------------------------------------------------------------------ panels / rail */
+function setPanel(name) {
+  document.body.classList.toggle('panel-open', !!name);
+  if (name && innerWidth < 768 && cur) closeInspector();   /* one sheet at a time on a phone */
+  if (name === 'hotspots' && LAY.hot && LAY.hot.avail && !LAY.hot.on) setVisible('hot', true);   /* opening the tab shows them on the map */
+  if (name === 'hotspots') { curPanel = name; scheduleNames(); }
+  $$('.flyout').forEach(p => { p.hidden = !(name && p.id === 'p-' + name); });
+  $$('.rail button').forEach(b => b.setAttribute('aria-pressed', b.dataset.panel === name));
+  const w = name ? (innerWidth < 768 ? 0 : $('#p-' + name).offsetWidth + 8) : 0;
+  document.documentElement.style.setProperty('--left', (72 + w) + 'px');
+  setTimeout(() => { map.invalidateSize(); drawChart(); }, 30);
+}
+let curPanel = innerWidth < 768 ? null : 'layers';
+$('.rail').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; curPanel = curPanel === b.dataset.panel ? null : b.dataset.panel; setPanel(curPanel); });
+$$('[data-close]').forEach(b => b.addEventListener('click', () => { curPanel = null; setPanel(null); }));
+
+/* ------------------------------------------------------------------ theme */
+function applyTheme(pref) {
+  const dark = pref === 'dark' || (pref === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  document.documentElement.dataset.pref = pref; store.set('ktm-theme', pref);
+  $$('.themeSeg button').forEach(b => b.setAttribute('aria-pressed', b.dataset.pref === pref));
+  if (baseOverlay) baseOverlay.setUrl(baseUrl());
+  if (state.bm === 'map') setBasemap('map'); else if (LAY.labels.on) LAY.labels.mount(true);
+  renderBms(); restyle(); writeHash();
+}
+/* re-read the colour tokens after a theme or basemap change */
+function restyle() {
+  restyleRivers();
+  ringGroup.eachLayer(g => g.setStyle({ color: tok('--zone') }));
+  stationLayer.setStyle({ color: tok('--text'), fillColor: tok('--surface-solid') });
+  styleVector(); updateZone(); redrawPacked(); drawChart();
+}
+document.addEventListener('click', e => { const b = e.target.closest('.themeSeg button'); if (b) applyTheme(b.dataset.pref); });
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (document.documentElement.dataset.pref === 'system') applyTheme('system'); });
+
+/* ------------------------------------------------------------------ inspector (click anywhere) */
+const segs = [];
+D.lines.features.forEach(f => {
+  const parts = f.geometry.type === 'LineString' ? [f.geometry.coordinates] : f.geometry.coordinates;
+  parts.forEach(p => { for (let i = 1; i < p.length; i++) segs.push([p[i - 1][0], p[i - 1][1], p[i][0], p[i][1], f.properties]); });
+});
+function nearestRiver(lat, lon) {
+  const kx = 111320 * Math.cos(lat * Math.PI / 180), ky = 110574; let best = Infinity, bp = null;
+  for (const s of segs) {
+    const ax = (s[0] - lon) * kx, ay = (s[1] - lat) * ky, bx = (s[2] - lon) * kx, by = (s[3] - lat) * ky;
+    const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy; let t = l2 ? -(ax * dx + ay * dy) / l2 : 0; t = Math.max(0, Math.min(1, t));
+    const d = Math.hypot(ax + t * dx, ay + t * dy); if (d < best) { best = d; bp = s[4]; }
+  }
+  return { d: best, p: bp };
+}
+let probe = null, cur = null, rep = { ans: null, int: null, here: false, done: false };
+const CFG = window.KTM_CONFIG || {};
+/* a relative report_url (like "/api/report") only works when the page itself is served over http(s) by the collector */
+const reportUrl = () => { const u = CFG.report_url || ''; return /^https?:/i.test(u) ? u : (u && /^https?:$/.test(location.protocol) ? u : ''); };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function inValley(lat, lon) {
+  if (!V) return true;
+  const g = V.outline.geometry, ring = (g.type === 'Polygon' ? g.coordinates : g.coordinates[0])[0]; let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i], [xj, yj] = ring[j];
+    if ((yi > lat) !== (yj > lat) && lon < (xj - xi) * (lat - yi) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+/* ---- reports: kept in this browser; optionally POSTed to CFG.report_url ---- */
+let saved = []; try { saved = JSON.parse(localStorage.getItem('ktm-reports') || '[]'); } catch (e) {}
+const persist = () => { try { localStorage.setItem('ktm-reports', JSON.stringify(saved)); return true; } catch (e) { return false; } };
+const CSV_COLS = ['lat', 'lon', 'datetime', 'detected', 'intensity_0_5', 'wind_dir_from_deg', 'session', 'observer', 'river', 'map_says_inside', 'exposure_m'];
+const csvCell = v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+function downloadCsv() {
+  const rows = [CSV_COLS.join(',')].concat(saved.map(r => CSV_COLS.map(c => csvCell(r[c])).join(',')));
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([rows.join('\n') + '\n'], { type: 'text/csv' }));
+  a.download = 'observations_web.csv'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+function renderRepAbout() {
+  $('#repAbout').innerHTML = `<b>${saved.length}</b> report${saved.length === 1 ? '' : 's'} saved in this browser. ` +
+    (saved.length ? '<button class="linkbtn" data-rep="csv">Download CSV</button> (same columns as <code>observations.csv</code> for <code>calibrate</code>) &middot; <button class="linkbtn" data-rep="clear">Delete them</button>' : '')
+    + (reportUrl() ? ' New reports are also sent to this project’s collector.' : ' Reports stay on this device: this copy is not connected to a collector (see <code>report_server.py</code> and <code>config.js</code>).');
+}
+async function sendReport() {
+  const dt = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Kathmandu', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date());
+  const r = { lat: +cur.lat.toFixed(4), lon: +cur.lng.toFixed(4), datetime: dt, detected: rep.ans, intensity_0_5: rep.ans === 1 ? (rep.int ?? '') : 0,
+    wind_dir_from_deg: '', session: dt.slice(0, 10) + '-web', observer: 'web', river: (cur.river && cur.river.name) || '', map_says_inside: cur.inside ? 1 : 0, exposure_m: cur.T };
+  saved.push(r); const kept = persist();
+  let sent = null;
+  const url = reportUrl(), blind = CFG.report_mode === 'no-cors';   /* no-cors (e.g. Google Apps Script): the answer cannot be read */
+  if (url) {
+    try {
+      const res = await fetch(url, { method: 'POST', mode: blind ? 'no-cors' : 'cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(r) });
+      sent = blind ? true : res.ok;
+      if (!sent) { let why = ''; try { why = (await res.json()).error; } catch (e) { /* no body */ } toast('The collector did not accept the report' + (why ? ': ' + why : '') + '. It is kept on this device.'); }
+    } catch (e) { sent = false; toast('Could not reach the collector. The report is kept on this device.'); }
+  }
+  const agree = (cur.inside && rep.ans === 1) || (!cur.inside && rep.ans === 0);
+  rep.msg = (agree ? `Your answer matches the map at ${cur.T} m.`
+    : rep.ans === 1 ? `You smell it outside the ${cur.T} m zone, so the zone may be too small here.`
+    : `No smell inside the ${cur.T} m zone. The odour may not reach this far, or may come and go.`)
+    + ' One report is one data point; many are needed to say anything about the map.'
+    + (sent ? ' Sent to the project.' : url ? (kept ? ' Saved on this device only (it could not be sent).' : ' It could not be sent or saved.')
+      : kept ? ' Saved on this device.' : ' Could not be saved (browser storage is blocked).');
+  rep.done = true; renderRepAbout(); drawInspector();
+}
+function repHTML() {
+  if (rep.done) return `<div class="rep"><b>Thanks.</b><p class="note">${esc(rep.msg)}</p><button class="btn" data-rep="again">Report again</button></div>`;
+  const ints = [1, 2, 3, 4, 5].map(i => `<button data-int="${i}" aria-pressed="${rep.int === i}">${i}</button>`).join('');
+  return `<div class="rep"><div class="mono-label">Help check this map</div>
+    <p class="note">If you are here now: can you smell a river or sewage odour?</p>
+    <div class="choices"><button class="choice" data-ans="1" aria-pressed="${rep.ans === 1}">Yes, I smell it</button><button class="choice" data-ans="0" aria-pressed="${rep.ans === 0}">No smell</button></div>
+    ${rep.ans === 1 ? `<div class="note" style="margin-bottom:4px">How strong? <span class="small">1 faint, 5 unbearable (optional)</span></div><div class="seg" role="group" aria-label="Smell strength">${ints}</div>` : ''}
+    <label class="chk"><input type="checkbox" class="cb" data-here ${rep.here ? 'checked' : ''}> I am at this spot right now</label>
+    <button class="btn primary" data-rep="send" ${rep.ans !== null && rep.here ? '' : 'disabled'}>Send report</button>
+    <p class="small" style="margin:8px 0 0">Saves this spot rounded to about 10 m (not your typed address), the time, and your answer.</p></div>`;
+}
+function drawInspector() {
+  const c = cur, p = c.river || {}, fitted = (D.reach || []).find(r => r.dist_m != null && isFinite(r.dist_m));
+  const far = c.d > D.max_dist, outV = !inValley(c.lat, c.lng);
+  $('#insTitle').textContent = c.label || 'This spot';
+  $('#insBody').innerHTML = `<div class="verdict ${c.inside ? 'in' : ''}"><b>${c.inside ? 'Inside' : 'Outside'} the ${c.T} m exposure zone</b>
+      <span>${fmt(c.d)} m from ${esc(p.name || 'the nearest mapped waterway')}</span></div>
+    ${fitted ? `<dl class="kv"><dt>Fitted reach (P=${fitted.p})</dt><dd>${Math.round(fitted.dist_m)} m, ${c.d <= fitted.dist_m ? 'inside' : 'outside'}</dd></dl>` : ''}
+    ${c.acc > 100 ? `<p class="note" style="margin:0 0 8px">Your device is only sure of its position to about ${c.acc} m, so a verdict near the zone edge is uncertain.</p>` : ''}
+    ${far ? `<p class="note" style="margin:0 0 8px">More than ${D.max_dist} m from any mapped river.</p>` : ''}
+    ${outV ? `<p class="note" style="margin:0 0 8px">Outside the mapped valley basin; river data may be incomplete here.</p>` : ''}
+    ${p.do_mgl != null ? `<dl class="kv"><dt>DO (nearest station)</dt><dd>${p.do_mgl} mg/L</dd></dl>` : ''}
+    <p class="note" style="margin:0">The zone is a distance from the river. It is not a measured or forecast smell, and only the named rivers are mapped.</p>
+    ${repHTML()}`;
+  $('#inspector').classList.add('open'); document.body.classList.add('ins-open');
+}
+function checkPoint(ll, label, fly) {
+  const n = nearestRiver(ll.lat, ll.lng);
+  cur = { lat: ll.lat, lng: ll.lng, d: n.d, river: n.p, inside: n.d <= state.T, T: state.T, label };
+  rep = { ans: null, int: null, here: false, done: false };
+  if (probe) map.removeLayer(probe);
+  probe = L.circleMarker(ll, { pane: 'pts', radius: 7, color: '#fff', weight: 2.5, fillColor: tok('--accent'), fillOpacity: 1 }).addTo(map);
+  if (fly) { const pi = panelInsets(), mob = innerWidth < 768;
+    map.fitBounds(L.latLng(ll).toBounds(1200), { paddingTopLeft: pi.tl, paddingBottomRight: [mob ? 20 : 310, mob ? 330 : pi.br[1]], animate: false, maxZoom: 17 }); }
+  drawInspector(); writeHash();
+}
+map.on('click', e => checkPoint(e.latlng, null, false));
+function closeInspector() { $('#inspector').classList.remove('open'); document.body.classList.remove('ins-open'); if (probe) { map.removeLayer(probe); probe = null; } cur = null; }
+$('#insClose').addEventListener('click', closeInspector);
+/* the verdict depends on the chosen distance: refresh it when the slider moves */
+function refreshCheck() { if (cur && !rep.done) { cur.inside = cur.d <= state.T; cur.T = state.T; drawInspector(); } }
+$('#insBody').addEventListener('click', e => {
+  const a = e.target.closest('[data-ans]'), i = e.target.closest('[data-int]'), r = e.target.closest('[data-rep]');
+  if (a) { rep.ans = +a.dataset.ans; if (rep.ans === 0) rep.int = null; drawInspector(); }
+  else if (i) { rep.int = rep.int === +i.dataset.int ? null : +i.dataset.int; drawInspector(); }
+  else if (r) { const k = r.dataset.rep; if (k === 'send' && rep.ans !== null && rep.here) sendReport(); else if (k === 'again') { rep = { ans: null, int: null, here: false, done: false }; drawInspector(); } }
+});
+$('#insBody').addEventListener('change', e => { if (e.target.matches('[data-here]')) { rep.here = e.target.checked; drawInspector(); } });
+$('#p-about').addEventListener('click', e => {
+  const r = e.target.closest('[data-rep]'); if (!r) return;
+  if (r.dataset.rep === 'csv') downloadCsv();
+  else if (r.dataset.rep === 'clear' && confirm('Delete all saved reports from this browser? Download them first if you want to keep them.')) { saved = []; persist(); renderRepAbout(); }
+});
+renderRepAbout();
+
+/* ---- address search (Photon, falling back to Nominatim); biased to and limited to the valley ---- */
+const q = $('#q'), qres = $('#qres'); let qItems = [], qSel = -1, qTimer = 0, qSeq = 0;
+const SB = viewBounds.pad(0.15), BBOX = [SB.getWest(), SB.getSouth(), SB.getEast(), SB.getNorth()];
+const inBox = (lat, lon) => lon >= BBOX[0] && lon <= BBOX[2] && lat >= BBOX[1] && lat <= BBOX[3];
+async function geocode(text, signal) {
+  const out = [];
+  try {
+    const r = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(text)}&limit=10&lang=en&lat=27.70&lon=85.32&bbox=${BBOX.join(',')}`, { signal });
+    if (!r.ok) throw new Error('photon ' + r.status);
+    (await r.json()).features.forEach(f => { const p = f.properties || {}, [lon, lat] = f.geometry.coordinates;
+      const street = [p.housenumber, p.street].filter(Boolean).join(' ');
+      out.push({ lat, lon, t: p.name || street || p.district || p.city || 'Place', s: [p.name ? street : '', p.district || p.locality, p.city, p.state].filter(Boolean).join(', ') }); });
+  } catch (e) { if (e.name === 'AbortError') throw e; }
+  if (out.length) return out;
+  const r = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=10&viewbox=${BBOX[0]},${BBOX[3]},${BBOX[2]},${BBOX[1]}&bounded=1&q=${encodeURIComponent(text)}`, { signal });
+  if (!r.ok) throw new Error('nominatim ' + r.status);
+  return (await r.json()).map(x => { const parts = x.display_name.split(', '); return { lat: +x.lat, lon: +x.lon, t: parts[0], s: parts.slice(1, 4).join(', ') }; });
+}
+function qShow(html, items) { qItems = items || []; qSel = -1; qres.innerHTML = html; qres.hidden = false; q.setAttribute('aria-expanded', 'true'); }
+function qHide() { qres.hidden = true; q.setAttribute('aria-expanded', 'false'); }
+let qCtl = null;
+async function qRun() {
+  const text = q.value.trim(); if (text.length < 3) { qHide(); return; }
+  const my = ++qSeq; if (qCtl) qCtl.abort(); qCtl = new AbortController();
+  qShow('<li class="msg" role="option">Searching&hellip;</li>');
+  try {
+    const items = (await geocode(text, qCtl.signal)).filter(x => inBox(x.lat, x.lon)).slice(0, 7);
+    if (my !== qSeq) return;
+    qShow(items.length ? items.map((x, i) => `<li role="option" id="qr${i}" data-i="${i}"><div class="t">${esc(x.t)}</div><div class="s">${esc(x.s)}</div></li>`).join('')
+      : '<li class="msg" role="option">No match in the valley. Try a street, ward, area or landmark name, or click the map.</li>', items);
+  } catch (e) {
+    if (e.name === 'AbortError' || my !== qSeq) return;
+    qShow('<li class="msg" role="option">The search service could not be reached. You can still click the map to check a spot. <button class="linkbtn" data-retry>Retry</button></li>');
+  }
+}
+function qPick(i) {
+  const x = qItems[i]; if (!x) return; qHide(); q.value = x.t; q.blur();
+  checkPoint(L.latLng(x.lat, x.lon), x.t + (x.s ? ', ' + x.s.split(', ')[0] : ''), true);
+}
+q.addEventListener('input', () => { clearTimeout(qTimer); qTimer = setTimeout(qRun, 350); });
+q.addEventListener('keydown', e => {
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { if (!qItems.length) return; e.preventDefault(); qSel = (qSel + (e.key === 'ArrowDown' ? 1 : -1) + qItems.length) % qItems.length;
+    $$('#qres li').forEach((li, i) => li.setAttribute('aria-selected', i === qSel)); q.setAttribute('aria-activedescendant', 'qr' + qSel); }
+  else if (e.key === 'Enter') { e.preventDefault(); if (qSel >= 0) qPick(qSel); else if (qItems.length === 1) qPick(0); else { clearTimeout(qTimer); qRun(); } }
+  else if (e.key === 'Escape') { qHide(); q.blur(); }
+});
+q.addEventListener('focus', () => { if (qItems.length && q.value.trim().length >= 3) qres.hidden = false; });
+qres.addEventListener('mousedown', e => { const li = e.target.closest('li[data-i]'); if (li) { e.preventDefault(); qPick(+li.dataset.i); } else if (e.target.closest('[data-retry]')) { e.preventDefault(); qRun(); } });
+document.addEventListener('click', e => { if (!e.target.closest('#search')) qHide(); });
+/* ---- my location: asked only when the button is pressed; the browser shows its own permission prompt ---- */
+let meDot = null, meRing = null, locating = false;
+function setLocBusy(b) { locating = b; $$('#locBtn,#locate,#fab').forEach(x => { x.classList.toggle('busy', b); x.disabled = b; }); }
+function showMe(ll, acc) {
+  if (meDot) { map.removeLayer(meDot); map.removeLayer(meRing); }
+  meRing = L.circle(ll, { pane: 'pts', radius: Math.max(acc, 5), interactive: false, color: '#2563eb', weight: 1, fillColor: '#2563eb', fillOpacity: .12 }).addTo(map);
+  meDot = L.circleMarker(ll, { pane: 'pts', radius: 8, color: '#fff', weight: 3, fillColor: '#2563eb', fillOpacity: 1, interactive: false }).addTo(map);
+  $('#locBtn').setAttribute('aria-pressed', 'true');
+}
+async function locateMe() {
+  if (locating) return;
+  if (!navigator.geolocation) { toast('This browser cannot share your location. Search for your street or click the map instead.'); return; }
+  if (window.isSecureContext === false && location.protocol !== 'file:') { toast('Location only works on a secure (https) page. Search for your street or click the map instead.'); return; }
+  try {
+    const st = navigator.permissions && await navigator.permissions.query({ name: 'geolocation' });
+    if (st && st.state === 'denied') { toast('Location is blocked for this page. Allow it in your browser’s site settings, then try again.'); return; }
+  } catch (e) { /* permission API unavailable: just ask */ }
+  setLocBusy(true);
+  navigator.geolocation.getCurrentPosition(pos => {
+    setLocBusy(false);
+    const ll = L.latLng(pos.coords.latitude, pos.coords.longitude), acc = Math.round(pos.coords.accuracy);
+    showMe(ll, acc);
+    if (!inBox(ll.lat, ll.lng)) { toast('You appear to be outside the Kathmandu valley area of this map (' + ll.lat.toFixed(3) + ', ' + ll.lng.toFixed(3) + ').'); return; }
+    checkPoint(ll, 'My location (±' + acc + ' m)', true); cur.acc = acc; drawInspector();
+  }, err => {
+    setLocBusy(false);
+    toast(err.code === 1 ? 'Location permission was declined. You can still search for your street or click the map.'
+      : err.code === 3 ? 'Finding your location took too long. Try again, or search for your street.'
+      : 'Your device could not work out its location. Search for your street or click the map instead.');
+  }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 });
+}
+$('#locate').addEventListener('click', locateMe);
+$('#locBtn').addEventListener('click', locateMe);
+$('#fab').addEventListener('click', locateMe);
+
+/* ------------------------------------------------------------------ controls + keys */
+$('#zin').addEventListener('click', () => map.zoomIn());
+$('#zout').addEventListener('click', () => map.zoomOut());
+$('#fit').addEventListener('click', fit);
+/* welcome card: shown once per browser, and not on shared links that carry a view */
+const W = $('#welcome');
+function wShow() { W.hidden = false; requestAnimationFrame(() => { W.classList.add('open'); $('#wExplore').focus(); }); }
+function wHide() {
+  W.classList.remove('open'); setTimeout(() => { W.hidden = true; }, 220);
+  try { localStorage.setItem('ktm-welcome', '1'); } catch (e) {}
+}
+$('#wExplore').addEventListener('click', wHide);
+$('#wCheck').addEventListener('click', () => { wHide(); setTimeout(() => { q.focus(); }, 250); });
+W.addEventListener('click', e => { if (e.target === W) wHide(); });
+$('#wReopen').addEventListener('click', wShow);
+try { if (!localStorage.getItem('ktm-welcome') && !location.hash.slice(1)) wShow(); } catch (e) { if (!location.hash.slice(1)) wShow(); }
+addEventListener('keydown', e => {
+  if (!W.hidden && W.classList.contains('open')) { if (e.key === 'Escape') wHide(); return; }
+  if (e.target.matches('input,textarea,select') && e.key !== 'Escape') return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const k = e.key;
+  if (k === 'Escape') { if ($('#inspector').classList.contains('open')) closeInspector(); else if (curPanel) { curPanel = null; setPanel(null); } }
+  else if (k === '/') { e.preventDefault(); q.focus(); q.select(); }
+  else if (k === 'l' || k === 'L') { curPanel = curPanel === 'layers' ? null : 'layers'; setPanel(curPanel); }
+  else if (k === 'e' || k === 'E') { curPanel = curPanel === 'exposure' ? null : 'exposure'; setPanel(curPanel); }
+  else if (k === 'h' || k === 'H') { curPanel = curPanel === 'hotspots' ? null : 'hotspots'; setPanel(curPanel); }
+  else if (k === 'm' || k === 'M') { curPanel = curPanel === 'about' ? null : 'about'; setPanel(curPanel); }
+  else if (k === '[') { curPanel = null; setPanel(null); }
+  else if (k === ']') setDock(!$('#dock').classList.contains('collapsed'));
+  else if (k === 'ArrowLeft') setT(state.T - D.zone_step);
+  else if (k === 'ArrowRight') setT(state.T + D.zone_step);
+});
+addEventListener('resize', () => { map.invalidateSize(); drawChart(); });
+
+/* ------------------------------------------------------------------ boot */
+renderLayers(); applyZ();
+LAYERS.forEach(l => { if (l.avail && !state.hidden.has(l.id)) { l.on = true; } });
+setBasemap(state.bm);                       /* sets data-base, so tokens are right before anything draws */
+LAYERS.forEach(l => { if (l.avail) l.mount(l.on); });   /* also applies "off" to the canvas layers, which start visible */
+{ const f0 = state.focus; state.focus = null; if (f0 != null) setFocus(f0, false); }   /* restore a river focus from the URL */
+renderBms(); renderLayers(); renderQuick();
+fadeBase();
+applyTheme(document.documentElement.dataset.pref);
+setPanel(curPanel);
+if (innerWidth < 768) setDock(true);
+setT(state.T);
+requestAnimationFrame(() => requestAnimationFrame(() => { $('#progress').classList.add('done'); }));
+window.__ktm = { map, state, setT };
+})();
+</script>
+</body>
+</html>

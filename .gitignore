@@ -1,0 +1,18 @@
+# working data and run artefacts: regenerate with kathmandu_odour_map.py, do not publish
+overpass_cache/
+shots/
+*.log
+data/*.tif
+npl_ppp_2020.tif
+__pycache__/
+test_data/
+
+# reports are personal data (even rounded): never commit them
+reports.db
+observations_web.csv
+*.csv.bak
+
+# big derived files the website does not need
+out/odour_layers.gpkg
+out/river_points.csv
+out/exposure_curve.csv

@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Report admin</title>
+<style nonce="__NONCE__">
+:root{--bg:#f4f5f7;--surface:#fff;--surface-2:#eef0f3;--border:rgba(15,23,42,.12);--text:#0f172a;--text-2:#475569;--text-3:#8793a6;
+  --accent:#d9480f;--accent-soft:rgba(217,72,15,.12);--ok:#15803d;--bad:#b91c1c;--warn:#b45309;--radius:12px;--shadow:0 4px 16px rgba(15,23,42,.08)}
+@media (prefers-color-scheme:dark){:root{--bg:#0b0e14;--surface:#161a23;--surface-2:#1e2430;--border:rgba(255,255,255,.1);--text:#e8ecf3;--text-2:#a3adbf;--text-3:#6f7a8f;
+  --accent:#ff8a4c;--accent-soft:rgba(255,138,76,.16);--ok:#4ade80;--bad:#f87171;--warn:#fbbf24;--shadow:0 4px 16px rgba(0,0,0,.5)}}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--text);font:14px/1.45 Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-variant-numeric:tabular-nums}
+[hidden]{display:none!important}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+header{display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:5}
+header h1{font-size:16px;margin:0;flex:1}
+.btn{min-height:36px;padding:0 14px;border-radius:9px;border:1px solid var(--border);background:var(--surface-2);display:inline-flex;align-items:center;gap:6px;text-decoration:none;color:inherit}
+.btn:hover{background:var(--surface)} .btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.primary{background:var(--accent);border-color:transparent;color:#fff;font-weight:600}
+.btn.danger{color:var(--bad)}
+main{max-width:1180px;margin:0 auto;padding:16px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px}
+.login{max-width:360px;margin:12vh auto 0}
+.login h2{margin:0 0 4px} .login p{margin:0 0 12px;color:var(--text-2)}
+.field{display:flex;flex-direction:column;gap:4px;margin-bottom:12px}
+.field label{font-size:12px;color:var(--text-2)}
+input,select{min-height:38px;padding:0 10px;border-radius:9px;border:1px solid var(--border);background:var(--surface-2);width:100%}
+.err{color:var(--bad);min-height:1.4em;margin:6px 0 0}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
+.kpi .l{color:var(--text-2);font-size:12px} .kpi .v{font-size:24px;font-weight:650;letter-spacing:-.02em} .kpi .s{color:var(--text-3);font-size:12px}
+.two{display:grid;grid-template-columns:1.3fr 1fr;gap:16px;margin-bottom:16px}
+@media (max-width:820px){.two{grid-template-columns:1fr}}
+h3{margin:0 0 8px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-3)}
+table{border-collapse:collapse;width:100%}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+th{font-size:12px;color:var(--text-2);font-weight:600;white-space:nowrap}
+td.num,th.num{text-align:right}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 12px}
+.toolbar select,.toolbar input{width:auto;min-width:120px}
+.spacer{flex:1}
+.pill{display:inline-block;padding:1px 9px;border-radius:999px;font-size:12px;font-weight:600;background:var(--surface-2);color:var(--text-2)}
+.pill.yes{background:var(--accent-soft);color:var(--accent)} .pill.hid{background:rgba(180,83,9,.15);color:var(--warn)}
+.agree{color:var(--ok)} .disagree{color:var(--bad)}
+.rowact{display:flex;gap:6px;flex-wrap:wrap}
+.rowact .btn{min-height:30px;padding:0 10px;font-size:13px}
+tr.hidden-row td{opacity:.55}
+.pager{display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:12px;color:var(--text-2)}
+.log{font-size:12px;color:var(--text-2);max-height:220px;overflow:auto}
+.log div{padding:3px 0;border-bottom:1px solid var(--border)}
+dialog{border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);padding:20px;width:min(420px,92vw);box-shadow:var(--shadow)}
+dialog::backdrop{background:rgba(0,0,0,.45)}
+dialog .grid{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
+dialog .actions{display:flex;gap:8px;justify-content:flex-end;margin-top:8px}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:9px 16px;border-radius:10px;z-index:20}
+@media (max-width:700px){
+  header{flex-wrap:wrap;gap:8px} header h1{flex:1 1 100%;font-size:15px}
+  header .btn{flex:1;justify-content:center;white-space:nowrap}
+  thead{display:none}
+  table.rows,table.rows tbody,table.rows tr,table.rows td{display:block;width:100%}
+  table.rows tr{border:1px solid var(--border);border-radius:10px;margin-bottom:10px;padding:6px 4px}
+  table.rows td{border:0;padding:3px 8px}
+  table.rows td[data-l]::before{content:attr(data-l) ": ";color:var(--text-3);font-size:12px}
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>Smell reports <span class="pill" id="who" hidden>admin</span></h1>
+  <a class="btn" href="/odour_map.html" id="mapLink">Open map</a>
+  <a class="btn" id="exportBtn" href="/api/export" download hidden>Export CSV</a>
+  <button class="btn" id="logoutBtn" hidden>Sign out</button>
+</header>
+
+<main>
+  <section class="card login" id="login" hidden>
+    <h2>Sign in</h2>
+    <p>Only you can read, edit or delete reports.</p>
+    <form id="loginForm">
+      <div class="field"><label for="pw">Password</label><input id="pw" type="password" autocomplete="current-password" required></div>
+      <button class="btn primary" type="submit">Sign in</button>
+      <p class="err" id="loginErr" role="alert"></p>
+    </form>
+  </section>
+
+  <div id="app" hidden>
+    <div class="kpis" id="kpis"></div>
+    <div class="two">
+      <section class="card"><h3>By river</h3>
+        <div class="tablewrap"><table id="riverTable"><thead><tr><th>River (as typed by the map)</th><th class="num">Reports</th><th class="num">Smelled</th><th class="num">Agree with map</th></tr></thead><tbody></tbody></table></div>
+      </section>
+      <section class="card"><h3>Last days</h3><table id="dayTable"><thead><tr><th>Day</th><th class="num">Reports</th><th class="num">Smelled</th></tr></thead><tbody></tbody></table>
+        <h3 class="gap">Admin log</h3><div class="log" id="log"></div></section>
+    </div>
+
+    <section class="card">
+      <h3>Reports</h3>
+      <div class="toolbar">
+        <select id="fStatus" aria-label="Status"><option value="ok">Visible</option><option value="hidden">Hidden</option><option value="all">All</option></select>
+        <select id="fSmell" aria-label="Answer"><option value="">Any answer</option><option value="1">Smelled</option><option value="0">No smell</option></select>
+        <select id="fRiver" aria-label="River"><option value="">Any river</option></select>
+        <input id="fQ" type="search" placeholder="Search river, date or id" aria-label="Search">
+        <span class="spacer"></span>
+        <button class="btn" id="bHide" disabled>Hide selected</button>
+        <button class="btn" id="bUnhide" disabled>Unhide</button>
+        <button class="btn danger" id="bDelete" disabled>Delete selected</button>
+      </div>
+      <table class="rows" id="rows">
+        <thead><tr><th><input type="checkbox" id="all" aria-label="Select all on this page"></th><th>ID</th><th>Time (Nepal)</th><th>Answer</th><th>River</th><th>Map said</th><th>Spot</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <p id="empty" hidden>No reports match.</p>
+      <div class="pager"><span id="count"></span><button class="btn" id="prev">Previous</button><button class="btn" id="next">Next</button></div>
+    </section>
+  </div>
+</main>
+
+<dialog id="dlg">
+  <form method="dialog" id="editForm">
+    <h2 id="dlgTitle">Edit report</h2>
+    <div class="grid">
+      <div class="field"><label for="eDet">Smelled?</label><select id="eDet"><option value="1">Yes</option><option value="0">No</option></select></div>
+      <div class="field"><label for="eInt">Strength (0-5)</label><select id="eInt"><option value="">not given</option><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select></div>
+      <div class="field"><label for="eLat">Latitude</label><input id="eLat" type="number" step="0.0001" min="27.3" max="28"></div>
+      <div class="field"><label for="eLon">Longitude</label><input id="eLon" type="number" step="0.0001" min="85" max="85.7"></div>
+      <div class="field"><label for="eDt">Time (YYYY-MM-DD HH:MM)</label><input id="eDt" type="text" pattern="\d{4}-\d{2}-\d{2} \d{2}:\d{2}"></div>
+      <div class="field"><label for="eRiver">River</label><input id="eRiver" type="text" maxlength="80"></div>
+      <div class="field"><label for="eIn">Map said</label><select id="eIn"><option value="">unknown</option><option value="1">inside zone</option><option value="0">outside zone</option></select></div>
+      <div class="field"><label for="eEx">Zone distance (m)</label><input id="eEx" type="number" min="0" max="5000"></div>
+    </div>
+    <p class="err" id="editErr" role="alert"></p>
+    <div class="actions"><button class="btn" value="cancel" id="editCancel" type="button">Cancel</button><button class="btn primary" id="editSave" type="submit">Save</button></div>
+  </form>
+</dialog>
+
+<script nonce="__NONCE__">
+'use strict';
+const $ = (s, r = document) => r.querySelector(s);
+const el = (tag, props = {}, ...kids) => {            // text only: report fields come from strangers and are never parsed as HTML
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === 'class') e.className = v; else if (k === 'text') e.textContent = v;
+    else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
+    else if (v === true) e.setAttribute(k, ''); else if (v !== false && v != null) e.setAttribute(k, v);
+  }
+  kids.forEach(c => e.append(c)); return e;
+};
+const fmt = n => Number(n || 0).toLocaleString('en-US');
+const pct = (a, b) => b ? Math.round(a / b * 100) + '%' : '-';
+let F = { status: 'ok', smell: '', river: '', q: '', offset: 0, limit: 50 }, rows = [], total = 0, sel = new Set(), editing = null;
+
+function toast(msg) { const t = el('div', { class: 'toast', role: 'status', text: msg }); document.body.append(t); setTimeout(() => t.remove(), 3500); }
+async function api(path, opt = {}) {
+  const r = await fetch(path, { credentials: 'same-origin', ...opt, headers: { 'Content-Type': 'application/json', ...(opt.headers || {}) } });
+  const j = await r.json().catch(() => ({}));
+  if (r.status === 401 && !path.includes('login')) { showLogin(); throw new Error('Signed out'); }
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+function showLogin() { $('#login').hidden = false; $('#app').hidden = true; ['#who', '#exportBtn', '#logoutBtn'].forEach(s => { $(s).hidden = true; }); $('#pw').focus(); }
+function showApp() { $('#login').hidden = true; $('#app').hidden = false; ['#who', '#exportBtn', '#logoutBtn'].forEach(s => { $(s).hidden = false; }); }
+
+$('#loginForm').addEventListener('submit', async e => {
+  e.preventDefault(); $('#loginErr').textContent = '';
+  try { await api('/api/admin/login', { method: 'POST', body: JSON.stringify({ password: $('#pw').value }) }); $('#pw').value = ''; await start(); }
+  catch (err) { $('#loginErr').textContent = err.message; }
+});
+$('#logoutBtn').addEventListener('click', async () => { try { await api('/api/admin/logout', { method: 'POST', body: '{}' }); } catch (e) { /* already out */ } showLogin(); });
+
+async function loadSummary() {
+  const s = await api('/api/admin/summary');
+  const hidden = (s.status || {}).hidden || 0;
+  $('#kpis').replaceChildren(
+    ...[['Visible reports', fmt(s.visible), hidden ? fmt(hidden) + ' hidden' : 'none hidden'],
+        ['Smelled', fmt(s.smelled), pct(s.smelled, s.visible) + ' of visible'],
+        ['Agree with map', pct(s.agree, s.compared), fmt(s.agree) + ' of ' + fmt(s.compared) + ' compared'],
+        ['Rivers named', fmt(s.rivers.filter(r => r.river !== '(none)').length), 'in the reports']]
+      .map(([l, v, sub]) => el('div', { class: 'card kpi' }, el('div', { class: 'l', text: l }), el('div', { class: 'v', text: v }), el('div', { class: 's', text: sub }))));
+  $('#riverTable tbody').replaceChildren(...s.rivers.map(r => el('tr', {}, el('td', { text: r.river }),
+    el('td', { class: 'num', text: fmt(r.n) }), el('td', { class: 'num', text: fmt(r.smelled) }), el('td', { class: 'num', text: pct(r.agree, r.compared) }))));
+  $('#dayTable tbody').replaceChildren(...s.days.map(d => el('tr', {}, el('td', { text: d.day }), el('td', { class: 'num', text: fmt(d.n) }), el('td', { class: 'num', text: fmt(d.smelled) }))));
+  $('#log').replaceChildren(...(s.log.length ? s.log.map(l => el('div', { text: `${l.at_utc.replace('T', ' ').replace('Z', '')}  ${l.action}${l.report_id ? ' #' + l.report_id : ''}` })) : [el('div', { text: 'Nothing yet.' })]));
+  const keep = $('#fRiver').value;
+  $('#fRiver').replaceChildren(el('option', { value: '', text: 'Any river' }), ...s.rivers.map(r => el('option', { value: r.river, text: r.river })));
+  $('#fRiver').value = [...$('#fRiver').options].some(o => o.value === keep) ? keep : '';
+}
+
+async function loadList() {
+  const q = new URLSearchParams({ status: F.status, smell: F.smell, river: F.river, q: F.q, limit: F.limit, offset: F.offset });
+  const j = await api('/api/admin/reports?' + q);
+  rows = j.rows; total = j.total; sel.clear(); renderRows();
+}
+function renderRows() {
+  const tb = $('#rows tbody');
+  tb.replaceChildren(...rows.map(r => {
+    const hid = r.status === 'hidden';
+    const said = r.map_says_inside === null ? '-' : (r.map_says_inside ? 'inside' : 'outside') + (r.exposure_m ? ' ' + r.exposure_m + ' m' : '');
+    const agrees = r.map_says_inside !== null && r.map_says_inside === r.detected;
+    const cb = el('input', { type: 'checkbox', 'aria-label': 'Select report ' + r.id });
+    cb.checked = sel.has(r.id);
+    cb.addEventListener('change', () => { cb.checked ? sel.add(r.id) : sel.delete(r.id); updateBulk(); });
+    return el('tr', { class: hid ? 'hidden-row' : '' },
+      el('td', {}, cb), el('td', { 'data-l': 'ID', text: '#' + r.id }), el('td', { 'data-l': 'Time', text: r.datetime }),
+      el('td', { 'data-l': 'Answer' }, el('span', { class: 'pill ' + (r.detected ? 'yes' : ''), text: r.detected ? 'Smelled' + (r.intensity_0_5 ? ' ' + r.intensity_0_5 + '/5' : '') : 'No smell' }), hid ? el('span', { class: 'pill hid', text: ' hidden' }) : ''),
+      el('td', { 'data-l': 'River', text: r.river || '-' }),
+      el('td', { 'data-l': 'Map said', class: r.map_says_inside === null ? '' : (agrees ? 'agree' : 'disagree'), text: said + (r.map_says_inside === null ? '' : agrees ? ' (agrees)' : ' (differs)') }),
+      el('td', { 'data-l': 'Spot' }, el('a', { href: `/odour_map.html#v=${r.lat},${r.lon},17`, target: '_blank', rel: 'noopener', text: r.lat.toFixed(4) + ', ' + r.lon.toFixed(4) })),
+      el('td', {}, el('div', { class: 'rowact' },
+        el('button', { class: 'btn', text: 'Edit', onclick: () => openEdit(r) }),
+        el('button', { class: 'btn', text: hid ? 'Unhide' : 'Hide', onclick: () => bulk([r.id], hid ? 'unhide' : 'hide') }),
+        el('button', { class: 'btn danger', text: 'Delete', onclick: () => bulk([r.id], 'delete') }))));
+  }));
+  $('#empty').hidden = rows.length > 0;
+  const a = total ? F.offset + 1 : 0, b = F.offset + rows.length;
+  $('#count').textContent = `${a}-${b} of ${fmt(total)}`;
+  $('#prev').disabled = F.offset <= 0; $('#next').disabled = b >= total; $('#all').checked = false; updateBulk();
+}
+function updateBulk() { const n = sel.size; ['#bHide', '#bUnhide', '#bDelete'].forEach(s => { $(s).disabled = !n; }); }
+$('#all').addEventListener('change', e => { sel = new Set(e.target.checked ? rows.map(r => r.id) : []); renderRows(); $('#all').checked = e.target.checked; });
+
+async function bulk(ids, action) {
+  if (action === 'delete' && !confirm(`Permanently delete ${ids.length} report${ids.length === 1 ? '' : 's'}? This cannot be undone. Hide them instead if you only want them out of the exports.`)) return;
+  try { const j = await api('/api/admin/reports/bulk', { method: 'POST', body: JSON.stringify({ ids, action }) }); toast(`${j.changed} report(s) ${action === 'delete' ? 'deleted' : action === 'hide' ? 'hidden' : 'restored'}`); await refresh(); }
+  catch (e) { toast(e.message); }
+}
+$('#bHide').addEventListener('click', () => bulk([...sel], 'hide'));
+$('#bUnhide').addEventListener('click', () => bulk([...sel], 'unhide'));
+$('#bDelete').addEventListener('click', () => bulk([...sel], 'delete'));
+
+function openEdit(r) {
+  editing = r; $('#dlgTitle').textContent = 'Edit report #' + r.id; $('#editErr').textContent = '';
+  $('#eDet').value = String(r.detected); $('#eInt').value = r.intensity_0_5 === null ? '' : String(r.intensity_0_5);
+  $('#eLat').value = r.lat; $('#eLon').value = r.lon; $('#eDt').value = r.datetime; $('#eRiver').value = r.river || '';
+  $('#eIn').value = r.map_says_inside === null ? '' : String(r.map_says_inside); $('#eEx').value = r.exposure_m === null ? '' : r.exposure_m;
+  $('#dlg').showModal();
+}
+$('#editCancel').addEventListener('click', () => $('#dlg').close());
+$('#editForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const num = v => v === '' ? null : Number(v);
+  const body = { detected: Number($('#eDet').value), intensity_0_5: num($('#eInt').value), lat: num($('#eLat').value), lon: num($('#eLon').value),
+    datetime: $('#eDt').value.trim(), river: $('#eRiver').value, map_says_inside: num($('#eIn').value), exposure_m: num($('#eEx').value) };
+  try { await api('/api/admin/reports/' + editing.id, { method: 'PATCH', body: JSON.stringify(body) }); $('#dlg').close(); toast('Saved'); await refresh(); }
+  catch (err) { $('#editErr').textContent = err.message; }
+});
+
+async function refresh() { await Promise.all([loadSummary(), loadList()]); }
+let qTimer = 0;
+for (const [id, key] of [['#fStatus', 'status'], ['#fSmell', 'smell'], ['#fRiver', 'river']])
+  $(id).addEventListener('change', e => { F[key] = e.target.value; F.offset = 0; loadList().catch(x => toast(x.message)); });
+$('#fQ').addEventListener('input', e => { clearTimeout(qTimer); qTimer = setTimeout(() => { F.q = e.target.value.trim(); F.offset = 0; loadList().catch(x => toast(x.message)); }, 300); });
+$('#prev').addEventListener('click', () => { F.offset = Math.max(0, F.offset - F.limit); loadList(); });
+$('#next').addEventListener('click', () => { F.offset += F.limit; loadList(); });
+$('#exportBtn').addEventListener('click', e => { e.preventDefault(); location.href = '/api/export' + (F.status !== 'ok' ? '?all=1' : ''); });
+
+async function start() { try { await refresh(); showApp(); } catch (e) { if (e.message !== 'Signed out') toast(e.message); } }
+start();
+</script>
+</body>
+</html>
